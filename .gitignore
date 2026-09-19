@@ -23,8 +23,16 @@ dist-ssr/
 *.sqlite3
 backend/data/
 
-# Evaluation output (regenerated, not committed as results)
-evaluation/out/
+# Evaluation output (regenerated, not committed as results).
+#
+# The preserved baseline is the exception: a run that has already been cited in
+# the report is evidence, and regenerating it is not possible. Its JSON summary
+# is kept; the database snapshot beside it is not, because it holds fitted
+# behavioural profiles.
+evaluation/out/*
+!evaluation/out/baseline/
+evaluation/out/baseline/*
+!evaluation/out/baseline/*.json
 
 # Editors / OS
 .vscode/

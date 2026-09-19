@@ -164,6 +164,7 @@ def login_behavior(
         automation_score=verdict.automation_score,
         integrity_score=verdict.integrity_score,
         coverage=verdict.coverage,
+        threshold=verdict.threshold,
         latency_ms=0.0,
     )
     persist_ms = (time.perf_counter() - persist_started) * 1000.0

@@ -54,9 +54,30 @@ def init_db(db_path: Path | None = None) -> None:
     conn = _connect(target)
     try:
         conn.executescript(schema)
+        _migrate(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+# Columns added to tables that already exist in databases out in the wild.
+# CREATE TABLE IF NOT EXISTS silently does nothing for an existing table, so a
+# new column has to be added explicitly or an older database keeps working
+# while quietly missing it.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("auth_attempts", "threshold", "REAL"),
+)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, column, decl in _ADDED_COLUMNS:
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if not existing:
+            continue  # table not present in this database at all
+        if column not in existing:
+            # Table and column names here are literals from the tuple above;
+            # no caller supplies them. SQLite cannot bind identifiers.
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
 @contextmanager

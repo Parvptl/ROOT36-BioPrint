@@ -15,6 +15,15 @@ that priming login is not a replay attempt.
 Nothing is fabricated. If a category has too few observations the rate is
 reported as insufficient rather than computed from three attempts.
 
+**Password failures are separated from behavioural decisions.** A wrong
+password is rejected by the credential gate before any behavioural analysis
+runs, so it has no identity score and no threshold comparison. Those attempts
+are reported as PASSWORD_FAILURE with their count and their attempt ids, and
+excluded from FAR and FRR. See evaluation/attempts.py for the reasoning.
+
+Every attempt is also written out individually, so a later forensic pass never
+has to reconstruct which database rows belonged to which phase.
+
 Requires the backend running, and the database path so the audit trail can be
 read directly. Run from the backend directory:
 
@@ -44,18 +53,21 @@ from tests.factories import (  # noqa: E402
     value_injection_session,
 )
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from attempts import (  # noqa: E402
+    ALLOWED,
+    AUTOMATION_REASONS,
+    BLOCKED,
+    CLEAN_PROTOCOL_MIN,
+    INTEGRITY_REASONS,
+    MIN_SAMPLES_FOR_A_RATE,
+    PhaseSummary,
+    classify,
+    fmt_rate,
+)
+
 BASE_URL = "http://127.0.0.1:8000"
-MIN_SAMPLES_FOR_A_RATE = 5
-
-ALLOWED = "ALLOW"
-BLOCKED = "BLOCK"
-
-AUTOMATION_REASONS = {"AUTOMATION_DETECTED"}
-INTEGRITY_REASONS = {
-    "CHALLENGE_REUSED", "CHALLENGE_EXPIRED", "CHALLENGE_UNKNOWN",
-    "CHALLENGE_WRONG_USER", "PHRASE_MISMATCH", "TIMESTAMP_INCONSISTENT",
-    "MALFORMED_EVENT_STREAM",
-}
 
 
 @dataclass
@@ -68,10 +80,11 @@ class Phase:
     def n(self) -> int:
         return len(self.attempts)
 
-    def rate(self, predicate) -> float | None:
-        if self.n < MIN_SAMPLES_FOR_A_RATE:
-            return None
-        return sum(1 for a in self.attempts if predicate(a)) / self.n
+    def summarise(self, profile_threshold: float | None) -> PhaseSummary:
+        return PhaseSummary(
+            label=self.label,
+            records=[classify(a, self.label, profile_threshold) for a in self.attempts],
+        )
 
 
 def read_attempts(db: Path, after_id: int) -> list[dict]:
@@ -110,6 +123,25 @@ def read_attempts_by_id(db: Path, ids: list[int]) -> list[dict]:
                 ids,
             )
         ]
+    finally:
+        conn.close()
+
+
+def load_profile_threshold(db: Path, username: str) -> float | None:
+    """The account's calibrated threshold.
+
+    Only used to reconstruct the effective threshold for attempts recorded
+    before auth_attempts carried a threshold column. Live rows report their
+    own; anything reconstructed is labelled as derived in the output.
+    """
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        row = conn.execute(
+            "SELECT p.threshold FROM behavior_profiles p "
+            "JOIN users u ON u.id = p.user_id WHERE u.username = ?",
+            (username.lower(),),
+        ).fetchone()
+        return float(row[0]) if row else None
     finally:
         conn.close()
 
@@ -277,53 +309,108 @@ def replay_phase(db: Path, username: str, password: str, rounds: int, pacer: Pac
 # ------------------------------------------------------------------ report
 
 
-def _fmt(rate: float | None, n: int) -> str:
-    if rate is None:
-        return f"insufficient data (n={n}, need {MIN_SAMPLES_FOR_A_RATE})"
-    return f"{rate:6.1%}  (n={n})"
+def _protocol_note(summary: PhaseSummary) -> str:
+    """One line on whether this phase met the clean protocol."""
+    judged, failed = len(summary.behavioral), len(summary.password_failures)
+    parts = []
+    if failed:
+        ids = [r.attempt_id for r in summary.password_failures]
+        parts.append(f"{failed} wrong-password attempt(s) excluded (ids {ids})")
+    if judged < CLEAN_PROTOCOL_MIN:
+        parts.append(f"only {judged} behavioural attempts, protocol asks for "
+                     f"{CLEAN_PROTOCOL_MIN}")
+    return "; ".join(parts)
 
 
-def report(phases: dict[str, Phase]) -> dict:
+def report(phases: dict[str, Phase], profile_threshold: float | None) -> dict:
     print(f"\n\n{'=' * 72}\n  RESULTS\n{'=' * 72}\n")
 
-    out: dict[str, object] = {"generated": time.strftime("%Y-%m-%d %H:%M:%S")}
+    summaries = {k: p.summarise(profile_threshold) for k, p in phases.items()}
 
-    genuine = phases.get("GENUINE")
+    out: dict[str, object] = {
+        "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "protocol": {
+            "password_failures_excluded_from_far_frr": True,
+            "clean_protocol_min_per_human_phase": CLEAN_PROTOCOL_MIN,
+            "min_samples_for_a_rate": MIN_SAMPLES_FOR_A_RATE,
+        },
+    }
+
+    # A run with no human phases has not met the clean protocol, it has simply
+    # not attempted it. Saying "yes" there would be the harness marking its own
+    # homework.
+    clean = "GENUINE" in summaries and "IMPOSTOR" in summaries
+
+    genuine = summaries.get("GENUINE")
     if genuine:
-        gar = genuine.rate(lambda a: a["decision"] == ALLOWED)
-        frr = genuine.rate(lambda a: a["decision"] == BLOCKED)
-        print(f"  Genuine acceptance rate      {_fmt(gar, genuine.n)}")
-        print(f"  False rejection rate         {_fmt(frr, genuine.n)}")
-        out["genuine"] = {"n": genuine.n, "acceptance_rate": gar, "false_rejection_rate": frr}
+        gar = genuine.rate(lambda r: r.behavioral_decision == ALLOWED)
+        frr = genuine.rate(lambda r: r.behavioral_decision == BLOCKED)
+        n = len(genuine.behavioral)
+        print(f"  Genuine acceptance rate      {fmt_rate(gar, n)}")
+        print(f"  False rejection rate         {fmt_rate(frr, n)}")
+        out["genuine"] = {
+            **genuine.as_dict(),
+            "acceptance_rate": gar,
+            "false_rejection_rate": frr,
+        }
+        note = _protocol_note(genuine)
+        if note:
+            clean = False
+            print(f"       {note}")
 
-    impostor = phases.get("IMPOSTOR")
+    impostor = summaries.get("IMPOSTOR")
     if impostor:
-        irr = impostor.rate(lambda a: a["decision"] == BLOCKED)
-        far = impostor.rate(lambda a: a["decision"] == ALLOWED)
-        print(f"  Impostor rejection rate      {_fmt(irr, impostor.n)}")
-        print(f"  False acceptance rate        {_fmt(far, impostor.n)}")
-        out["impostor"] = {"n": impostor.n, "rejection_rate": irr, "false_acceptance_rate": far}
+        irr = impostor.rate(lambda r: r.behavioral_decision == BLOCKED)
+        far = impostor.rate(lambda r: r.behavioral_decision == ALLOWED)
+        n = len(impostor.behavioral)
+        print(f"  Impostor rejection rate      {fmt_rate(irr, n)}")
+        print(f"  False acceptance rate        {fmt_rate(far, n)}")
+        out["impostor"] = {
+            **impostor.as_dict(),
+            "rejection_rate": irr,
+            "false_acceptance_rate": far,
+        }
+        note = _protocol_note(impostor)
+        if note:
+            clean = False
+            print(f"       {note}")
 
-    bot = phases.get("BOT")
+    bot = summaries.get("BOT")
     if bot:
-        detected = bot.rate(lambda a: a["decision"] == BLOCKED)
-        as_automation = bot.rate(lambda a: a["reason"] in AUTOMATION_REASONS)
-        print(f"  Bot block rate               {_fmt(detected, bot.n)}")
+        detected = bot.rate(lambda r: r.behavioral_decision == BLOCKED)
+        as_automation = bot.rate(lambda r: r.rejection_reason in AUTOMATION_REASONS)
+        n = len(bot.behavioral)
+        print(f"  Bot block rate               {fmt_rate(detected, n)}")
         print(f"  ...of which flagged as automation rather than mismatch: "
-              f"{_fmt(as_automation, bot.n)}")
-        out["bot"] = {"n": bot.n, "block_rate": detected, "automation_reason_rate": as_automation}
+              f"{fmt_rate(as_automation, n)}")
+        out["bot"] = {**bot.as_dict(), "block_rate": detected,
+                      "automation_reason_rate": as_automation}
 
-    replay = phases.get("REPLAY")
+    replay = summaries.get("REPLAY")
     if replay:
-        rejected = replay.rate(lambda a: a["decision"] == BLOCKED)
-        by_integrity = replay.rate(lambda a: a["reason"] in INTEGRITY_REASONS)
-        print(f"  Replay rejection rate        {_fmt(rejected, replay.n)}")
-        print(f"  ...of which by an integrity check: {_fmt(by_integrity, replay.n)}")
-        out["replay"] = {"n": replay.n, "rejection_rate": rejected,
+        rejected = replay.rate(lambda r: r.behavioral_decision == BLOCKED)
+        by_integrity = replay.rate(lambda r: r.rejection_reason in INTEGRITY_REASONS)
+        n = len(replay.behavioral)
+        print(f"  Replay rejection rate        {fmt_rate(rejected, n)}")
+        print(f"  ...of which by an integrity check: {fmt_rate(by_integrity, n)}")
+        out["replay"] = {**replay.as_dict(), "rejection_rate": rejected,
                          "integrity_reason_rate": by_integrity}
 
+    # --- password failures, reported rather than discarded -------------------
+    failures = [r for s in summaries.values() for r in s.password_failures]
+    print(f"\n  PASSWORD_FAILURE             {len(failures)} attempt(s), excluded from "
+          f"FAR and FRR")
+    for r in failures:
+        print(f"       id {r.attempt_id}  phase {r.phase}  reason {r.rejection_reason}")
+    out["password_failures"] = {
+        "n": len(failures),
+        "attempts": [r.as_dict() for r in failures],
+        "note": "credential gate rejected these before any behavioural analysis; "
+                "they carry no identity score and no threshold comparison",
+    }
+
     latencies = [
-        a["latency_ms"] for p in phases.values() for a in p.attempts if a["latency_ms"]
+        r.latency_ms for s in summaries.values() for r in s.records if r.latency_ms
     ]
     if latencies:
         ordered = sorted(latencies)
@@ -333,13 +420,72 @@ def report(phases: dict[str, Phase]) -> dict:
               f"(n={len(latencies)}, end to end incl. Argon2id)")
         out["latency"] = {"n": len(latencies), "p50_ms": p50, "p95_ms": p95}
 
-    total = sum(p.n for p in phases.values())
+    out["attempts"] = [r.as_dict() for s in summaries.values() for r in s.records]
+
+    total = sum(s.total for s in summaries.values())
+    out["protocol"]["clean"] = clean  # type: ignore[index]
     print(f"\n  Total labelled attempts: {total}")
+    if "GENUINE" not in summaries or "IMPOSTOR" not in summaries:
+        print("  Clean protocol met: NO — human phases were not collected")
+    else:
+        print(f"  Clean protocol met: {'yes' if clean else 'NO — see notes above'}")
     if total < 40:
         print("\n  NOTE: this is a small sample. Every rate above carries wide")
         print("  uncertainty and should be reported with its n, not on its own.")
 
     return out
+
+
+# ---------------------------------------------------------------- preflight
+
+
+def preflight(db: Path) -> None:
+    """Refuse to measure a server that is older than the code on disk.
+
+    An earlier run was collected entirely against a uvicorn process started
+    before the ML and adaptive-profile layers existed. Nothing in the results
+    revealed it: the database schema was current because the file had been
+    recreated by a separate process, while the server kept serving the code it
+    had loaded hours earlier. The whole run described a build that is not the
+    product.
+    """
+    try:
+        health = httpx.get(f"{BASE_URL}/health", timeout=5.0)
+        health.raise_for_status()
+    except Exception as exc:
+        sys.exit(f"backend not reachable at {BASE_URL}: {exc}")
+
+    info = health.json()
+    started = info.get("started_at")
+    if started is None:
+        sys.exit(
+            "the running server does not report started_at, which means it "
+            "predates this check and is definitely stale. Restart it before "
+            "collecting an evaluation."
+        )
+
+    app_root = Path(info.get("app_root", BACKEND / "app"))
+    newest, newest_file = 0.0, None
+    for path in app_root.rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        mtime = path.stat().st_mtime
+        if mtime > newest:
+            newest, newest_file = mtime, path
+
+    if newest > started:
+        sys.exit(
+            "STALE SERVER. The running process started at "
+            f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(started))} but "
+            f"{newest_file} was modified at "
+            f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(newest))}.\n"
+            "It is serving code older than the source tree. Restart the backend "
+            "and start the evaluation again — results from this process would "
+            "describe a build that no longer exists."
+        )
+
+    if not db.exists():
+        sys.exit(f"database not found at {db}")
 
 
 def main() -> None:
@@ -349,7 +495,12 @@ def main() -> None:
     parser.add_argument("--db", default="data/bioprint.db", help="path to the SQLite database")
     parser.add_argument("--bot-rounds", type=int, default=6)
     parser.add_argument("--replay-rounds", type=int, default=5)
-    parser.add_argument("--out", default="../evaluation/out/results.json")
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="output file; defaults to a timestamped run file in evaluation/out/. "
+             "An existing file is never overwritten.",
+    )
     parser.add_argument(
         "--pace",
         type=float,
@@ -362,13 +513,8 @@ def main() -> None:
     args = parser.parse_args()
 
     db = Path(args.db).resolve()
-    if not db.exists():
-        sys.exit(f"database not found at {db}")
-
-    try:
-        httpx.get(f"{BASE_URL}/health", timeout=5.0).raise_for_status()
-    except Exception as exc:
-        sys.exit(f"backend not reachable at {BASE_URL}: {exc}")
+    preflight(db)
+    profile_threshold = load_profile_threshold(db, args.username)
 
     phases: dict[str, Phase] = {}
 
@@ -376,26 +522,47 @@ def main() -> None:
         phases["GENUINE"] = human_phase(
             db, "GENUINE",
             f"  The enrolled user ({args.username}) should now log in repeatedly\n"
-            f"  at http://localhost:5173/login, behaving normally.\n"
-            f"  Aim for at least 10 attempts. Both successes and failures count.",
+            f"  at {BASE_URL}/login, behaving normally.\n"
+            f"  Aim for at least {CLEAN_PROTOCOL_MIN} attempts WITH THE CORRECT\n"
+            f"  PASSWORD. A mistyped password is rejected by the credential gate\n"
+            f"  before any behavioural analysis runs, so it measures nothing —\n"
+            f"  if it happens, just do one more attempt. Behavioural successes\n"
+            f"  and behavioural failures both count.",
         )
         phases["IMPOSTOR"] = human_phase(
             db, "IMPOSTOR",
             f"  A DIFFERENT person now logs in as {args.username}, using the\n"
             f"  correct password. They should type naturally, as themselves.\n"
-            f"  Aim for at least 10 attempts.",
+            f"  Aim for at least {CLEAN_PROTOCOL_MIN} attempts. The password must\n"
+            f"  be entered correctly — the point of this phase is that the\n"
+            f"  behavioural layer stops someone who already has the password.\n"
+            f"  Repeat any attempt where it was mistyped.",
         )
 
     pacer = Pacer(args.pace)
     phases["BOT"] = bot_phase(db, args.username, args.password, args.bot_rounds, pacer)
     phases["REPLAY"] = replay_phase(db, args.username, args.password, args.replay_rounds, pacer)
 
-    results = report(phases)
+    results = report(phases, profile_threshold)
+    results["account"] = args.username
+    results["profile_threshold"] = profile_threshold
 
-    out_path = Path(args.out)
+    out_dir = Path(__file__).resolve().parent / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    out_path = Path(args.out) if args.out else out_dir / f"run_{stamp}.json"
+
+    # Never overwrite. An earlier run is evidence, and a rerun that silently
+    # replaced it would destroy the baseline it should be compared against.
+    if out_path.exists():
+        out_path = out_path.with_name(f"{out_path.stem}_{stamp}{out_path.suffix}")
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    (out_dir / "latest.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     print(f"\n  written to {out_path}")
+    print(f"  also copied to {out_dir / 'latest.json'}")
+    print(f"  previous runs preserved in {out_dir} and {out_dir / 'baseline'}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,28 @@
+{
+  "generated": "2026-09-20 01:09:03",
+  "genuine": {
+    "n": 14,
+    "acceptance_rate": 0.8571428571428571,
+    "false_rejection_rate": 0.14285714285714285
+  },
+  "impostor": {
+    "n": 10,
+    "rejection_rate": 1.0,
+    "false_acceptance_rate": 0.0
+  },
+  "bot": {
+    "n": 12,
+    "block_rate": 1.0,
+    "automation_reason_rate": 1.0
+  },
+  "replay": {
+    "n": 7,
+    "rejection_rate": 1.0,
+    "integrity_reason_rate": 1.0
+  },
+  "latency": {
+    "n": 43,
+    "p50_ms": 166.44539999833796,
+    "p95_ms": 186.250700004166
+  }
+}
