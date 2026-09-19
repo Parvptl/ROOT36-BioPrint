@@ -53,6 +53,17 @@ class TypingStyle:
 @dataclass
 class _Builder:
     rng: random.Random
+    # Pointer motion draws from its own stream.
+    #
+    # With a single shared stream, typing a longer or shorter phrase consumes a
+    # different number of draws, so the mouse path changes purely because the
+    # text changed. Real pointer behaviour has no such dependency, and the
+    # coupling measurably inflated apparent genuine variance: pointer feature
+    # spread roughly doubled between same-phrase and different-phrase captures,
+    # which is impossible outside the simulator. Separating the streams removes
+    # an artefact that was making the evaluation pessimistic for the wrong
+    # reason.
+    prng: random.Random = field(default_factory=lambda: random.Random(0))
     events: list[dict[str, Any]] = field(default_factory=list)
     t: float = 0.0
 
@@ -159,7 +170,7 @@ def _move_pointer(
     builder: _Builder, start: tuple[float, float], end: tuple[float, float], style: TypingStyle
 ) -> None:
     """A curved, jittery path with a deceleration toward the target."""
-    rng = builder.rng
+    rng = builder.prng
     x0, y0 = start
     x1, y1 = end
     distance = max(1.0, ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5)
@@ -192,7 +203,12 @@ def human_session(
 ) -> BehaviorSessionIn:
     """A full form fill: username, password, phrase, submit."""
     style = style or TypingStyle()
-    builder = _Builder(rng=random.Random(seed))
+    builder = _Builder(
+        rng=random.Random(seed),
+        # Offset so the two streams never coincide, still fully determined by
+        # `seed` so captures stay reproducible.
+        prng=random.Random(seed + 0x5EED0),
+    )
 
     builder.advance(_lognormal(builder.rng, 900.0, 0.4))  # time to first interaction
 

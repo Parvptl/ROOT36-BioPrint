@@ -37,6 +37,14 @@ MIN_GENUINE_SCORES = 3
 # narrow enough to still mean something.
 GENUINE_ONLY_K = 3.0
 
+# Extra margin above the worst leave-one-out fold, in units of the genuine
+# spread. Each fold is fitted on one fewer round than the real profile, so its
+# scores are systematically a little pessimistic; this covers that gap and
+# nothing more. Expressed relative to the user's own spread rather than as a
+# flat fraction, so a consistent user gets a tight threshold and a variable one
+# gets a looser threshold that they have earned.
+LOO_PESSIMISM_MARGIN = 1.5
+
 # Hard bounds. Below the lower bound almost every genuine login fails; above
 # the upper bound almost nothing is ever rejected. Either would be a broken
 # product regardless of what the arithmetic suggested.
@@ -175,13 +183,30 @@ def calibrate(
         source = "calibrated"
 
     elif len(genuine) >= MIN_GENUINE_SCORES:
-        centre = stats.median(np.asarray(genuine, dtype=float))
-        spread = stats.robust_scale(np.asarray(genuine, dtype=float))
-        # A user consistent across every round gives spread 0; the relative
-        # term keeps the threshold above the observed scores regardless.
+        genuine_arr = np.asarray(genuine, dtype=float)
+        centre = stats.median(genuine_arr)
+        spread = stats.robust_scale(genuine_arr)
+        observed_max = float(np.max(genuine_arr))
+        # Sit above the worst enrollment fold, but only by a margin proportional
+        # to the spread the user actually showed.
+        #
+        # An earlier version added a flat 40 percent of the observed maximum
+        # here, to stop genuine logins against fresh phrases being rejected.
+        # That was the wrong fix and it was measured doing real harm: it pushed
+        # the threshold to 0.46, where a moderately different impostor scoring
+        # 0.24 was accepted every time. The genuine-login problem was never the
+        # threshold, it was features whose scale collapsed below their own
+        # measurement resolution, which the registry noise floors now prevent.
+        #
+        # What remains is honest headroom for leave-one-out pessimism: each
+        # fold fits on four rounds rather than five, so its scores run slightly
+        # high relative to a real login against the full profile.
         threshold = float(
             np.clip(
-                max(centre + GENUINE_ONLY_K * spread, centre * 1.8 + 0.05),
+                max(
+                    centre + GENUINE_ONLY_K * spread,
+                    observed_max + LOO_PESSIMISM_MARGIN * max(spread, 0.02),
+                ),
                 MIN_THRESHOLD,
                 MAX_THRESHOLD,
             )

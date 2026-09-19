@@ -172,6 +172,29 @@ def delete_profile(conn: sqlite3.Connection, user_id: int) -> None:
     conn.execute("UPDATE users SET enrolled_at = NULL WHERE id = ?", (user_id,))
 
 
+def reset_operational_state(conn: sqlite3.Connection) -> dict[str, int]:
+    """Wipe users, profiles, challenges and audit rows for a live demo.
+
+    Does not insert scores, force ALLOW, or plant behavioural samples.
+    """
+    tables = (
+        "sessions",
+        "auth_attempts",
+        "auth_challenges",
+        "enrollment_sessions",
+        "behavior_profile_features",
+        "behavior_profiles",
+        "population_samples",
+        "users",
+    )
+    counts: dict[str, int] = {}
+    for table in tables:
+        row = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
+        counts[table] = int(row["n"])
+        conn.execute(f"DELETE FROM {table}")
+    return counts
+
+
 # --------------------------------------------------------------- decisions
 
 

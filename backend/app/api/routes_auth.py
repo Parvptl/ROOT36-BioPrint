@@ -22,7 +22,21 @@ from app.models.schemas import (
 log = logging.getLogger("bioprint.auth")
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-ENROLLMENT_ROUNDS = 5
+# Eight, chosen by measurement rather than by feel.
+#
+# A sweep over 30 independent enrollments per setting (evaluation/reliability_
+# sweep.py) gave, against moderately-different impostors:
+#     5 rounds  -> false rejection 16.2%, equal-error about 10.2%
+#     8 rounds  ->                  7.1%,                   7.7%
+#    12 rounds  ->                  8.3%,                   7.3%
+#
+# Five rounds leaves the per-feature scale estimates too noisy: the median
+# absolute deviation of five samples is a poor estimate of spread, so genuine
+# logins land outside a threshold fitted to it. Eight roughly halves that.
+# Twelve buys almost nothing for another ninety seconds of the user's time.
+#
+# Those figures are synthetic mechanism validation, not real accuracy.
+ENROLLMENT_ROUNDS = 8
 
 
 def client_key(request: Request, suffix: str = "") -> str:

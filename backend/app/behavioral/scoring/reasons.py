@@ -84,6 +84,57 @@ def explain(code: ReasonCode) -> str:
     return _EXPLANATIONS.get(code, "Authentication could not be completed.")
 
 
+# Short dashboard labels. Categories only — no thresholds or feature names.
+_HEADLINES: dict[ReasonCode, str] = {
+    ReasonCode.BEHAVIOR_MATCH: "ACCESS GRANTED",
+    ReasonCode.INVALID_CREDENTIALS: "ACCESS BLOCKED",
+    ReasonCode.ACCOUNT_NOT_ENROLLED: "ACCESS BLOCKED",
+    ReasonCode.AUTOMATION_DETECTED: "AUTOMATION DETECTED",
+    ReasonCode.BEHAVIORAL_MISMATCH: "BEHAVIORAL MISMATCH",
+    ReasonCode.KEYSTROKE_MISMATCH: "BEHAVIORAL MISMATCH",
+    ReasonCode.POINTER_MISMATCH: "BEHAVIORAL MISMATCH",
+    ReasonCode.INTERACTION_MISMATCH: "BEHAVIORAL MISMATCH",
+    ReasonCode.INSUFFICIENT_SIGNAL: "INSUFFICIENT SIGNAL",
+    ReasonCode.CHALLENGE_EXPIRED: "CHALLENGE EXPIRED",
+    ReasonCode.CHALLENGE_REUSED: "REPLAY / CHALLENGE FAILURE",
+    ReasonCode.CHALLENGE_UNKNOWN: "REPLAY / CHALLENGE FAILURE",
+    ReasonCode.CHALLENGE_WRONG_USER: "REPLAY / CHALLENGE FAILURE",
+    ReasonCode.PHRASE_MISMATCH: "REPLAY / CHALLENGE FAILURE",
+    ReasonCode.MALFORMED_EVENT_STREAM: "REPLAY / CHALLENGE FAILURE",
+    ReasonCode.TIMESTAMP_INCONSISTENT: "REPLAY / CHALLENGE FAILURE",
+}
+
+
+def headline(code: ReasonCode | str) -> str:
+    if not isinstance(code, ReasonCode):
+        try:
+            code = ReasonCode(code)
+        except ValueError:
+            return "ACCESS BLOCKED"
+    return _HEADLINES.get(code, "ACCESS BLOCKED")
+
+
+def integrity_status(reason: ReasonCode | str, integrity_score: float | None) -> str:
+    if not isinstance(reason, ReasonCode):
+        try:
+            reason = ReasonCode(reason)
+        except ValueError:
+            return "FAIL"
+    if reason in {
+        ReasonCode.CHALLENGE_EXPIRED,
+        ReasonCode.CHALLENGE_REUSED,
+        ReasonCode.CHALLENGE_UNKNOWN,
+        ReasonCode.CHALLENGE_WRONG_USER,
+        ReasonCode.PHRASE_MISMATCH,
+        ReasonCode.MALFORMED_EVENT_STREAM,
+        ReasonCode.TIMESTAMP_INCONSISTENT,
+    }:
+        return "FAIL"
+    if integrity_score is not None and integrity_score >= 0.5:
+        return "FAIL"
+    return "PASS"
+
+
 # Coarse severity band shown in the dashboard next to each contributing signal.
 def band(normalised: float) -> str:
     """Map a 0..1 deviation onto LOW / MEDIUM / HIGH for display."""

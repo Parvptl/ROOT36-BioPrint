@@ -125,6 +125,14 @@ def fit_profile(
             own_scale,
             POPULATION_FLOOR_ALPHA * population_scale,
             RELATIVE_FLOOR_BETA * abs(centre),
+            # The measurement floor: no scale may be finer than the resolution
+            # at which one session can estimate this feature. Without it, a
+            # quantised feature such as backspace rate collapses its scale to
+            # the gap between two adjacent counts, and a genuine user typing
+            # one extra backspace scores nine sigma out. The other floors are
+            # all relative to the centre, so for a feature whose centre is
+            # near zero they shrink with it and provide no protection.
+            SPECS[name].noise_floor,
             ABSOLUTE_FLOOR,
         )
 

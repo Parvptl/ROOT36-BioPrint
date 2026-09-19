@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import routes_auth, routes_enrollment, routes_login
+from app.api import routes_auth, routes_enrollment, routes_login, routes_ops
 from app.config import settings
 from app.db.database import init_db
 
@@ -60,6 +60,7 @@ app.add_middleware(
 app.include_router(routes_auth.router)
 app.include_router(routes_enrollment.router)
 app.include_router(routes_login.router)
+app.include_router(routes_ops.router)
 
 
 @app.get("/health")
@@ -70,4 +71,5 @@ def health() -> dict[str, object]:
         "service": "bioprint",
         "version": app.version,
         "raw_event_retention": settings.retain_raw_events,
+        "demo_reset_enabled": bool(settings.demo_reset_key),
     }

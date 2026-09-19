@@ -110,6 +110,8 @@ class LatencyBreakdown(BaseModel):
     extraction_ms: float
     identity_ms: float
     automation_ms: float
+    credential_ms: float = 0.0
+    persistence_ms: float = 0.0
 
 
 class DecisionOut(BaseModel):
@@ -122,6 +124,8 @@ class DecisionOut(BaseModel):
     decision: Literal["ALLOW", "BLOCK"]
     reason: str
     message: str
+    headline: str | None = None
+    integrity_status: str | None = None
     identity_score: float | None = None
     automation_score: float | None = None
     integrity_score: float
@@ -132,6 +136,32 @@ class DecisionOut(BaseModel):
     latency: LatencyBreakdown
     session_token: str | None = None
     attempt_id: int | None = None
+
+
+class AttemptLogOut(BaseModel):
+    """One audit-trail row, shaped for the security dashboard."""
+
+    attempt_id: int
+    username: str
+    decision: Literal["ALLOW", "BLOCK"]
+    reason: str
+    identity_score: float | None = None
+    automation_score: float | None = None
+    integrity_score: float | None = None
+    coverage: float | None = None
+    latency_ms: float | None = None
+    created_at: float
+
+
+class DashboardOut(BaseModel):
+    latest: AttemptLogOut | None
+    attempts: list[AttemptLogOut]
+    demo_reset_enabled: bool
+
+
+class DemoResetOut(BaseModel):
+    reset: bool
+    rows_deleted: dict[str, int]
 
 
 class ProfileStatusOut(BaseModel):

@@ -54,6 +54,8 @@ class Settings:
     # ephemeral secret means every restart invalidates all sessions: fine for a
     # dev run, wrong for anything else, so startup logs a warning.
     secret_is_ephemeral: bool = False
+    # Empty disables the HTTP demo-reset endpoint. The CLI reset never needs it.
+    demo_reset_key: str = ""
 
 
 def load_settings() -> Settings:
@@ -81,6 +83,7 @@ def load_settings() -> Settings:
         cors_origins=origins,
         retain_raw_events=_env_bool("BIOPRINT_RETAIN_RAW_EVENTS", False),
         secret_is_ephemeral=ephemeral,
+        demo_reset_key=os.getenv("BIOPRINT_DEMO_RESET_KEY", "").strip(),
     )
 
 

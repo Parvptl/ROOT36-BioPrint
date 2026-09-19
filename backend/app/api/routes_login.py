@@ -14,7 +14,7 @@ from app.api.routes_auth import enforce
 from app.auth.challenge import Challenge, consume_challenge, create_challenge
 from app.auth.passwords import verify_password, waste_time_like_a_real_verify
 from app.auth.sessions import issue_session
-from app.behavioral.scoring.reasons import ReasonCode, explain
+from app.behavioral.scoring.reasons import ReasonCode, explain, headline, integrity_status
 from app.behavioral.scoring.risk_engine import RiskDecision, Signal, decide
 from app.db import repository
 from app.db.database import db_dependency
@@ -78,19 +78,34 @@ def login_behavior(
     user = repository.get_user(conn, username)
 
     # --- credential gate ---------------------------------------------------
-    if user is None or not verify_password(payload.password, user["password_hash"]):
-        if user is None:
-            waste_time_like_a_real_verify()
+    if user is None:
+        waste_time_like_a_real_verify()
+        credential_ms = (time.perf_counter() - started) * 1000.0
+        consume_challenge(conn, payload.session.nonce, username, "login")
+        return _reject(
+            conn,
+            user_id=None,
+            username=username,
+            reason=ReasonCode.INVALID_CREDENTIALS,
+            started=started,
+            http_status=None,
+            credential_ms=credential_ms,
+        )
+
+    password_ok = verify_password(payload.password, user["password_hash"])
+    credential_ms = (time.perf_counter() - started) * 1000.0
+    if not password_ok:
         # The nonce is burned even here, so a wrong-password attempt cannot be
         # used to farm live challenges.
         consume_challenge(conn, payload.session.nonce, username, "login")
         return _reject(
             conn,
-            user_id=user["id"] if user else None,
+            user_id=user["id"],
             username=username,
             reason=ReasonCode.INVALID_CREDENTIALS,
             started=started,
             http_status=None,
+            credential_ms=credential_ms,
         )
 
     profile = repository.load_profile(conn, user["id"])
@@ -103,6 +118,7 @@ def login_behavior(
             reason=ReasonCode.ACCOUNT_NOT_ENROLLED,
             started=started,
             http_status=None,
+            credential_ms=credential_ms,
         )
 
     # --- challenge gate ----------------------------------------------------
@@ -115,6 +131,7 @@ def login_behavior(
             reason=error,
             started=started,
             http_status=None,
+            credential_ms=credential_ms,
         )
     assert challenge is not None
 
@@ -128,15 +145,7 @@ def login_behavior(
         features=result.features,
     )
 
-    total_ms = (time.perf_counter() - started) * 1000.0
-    latency = LatencyBreakdown(
-        total_ms=total_ms,
-        validation_ms=result.latency.validation_ms,
-        extraction_ms=result.latency.extraction_ms,
-        identity_ms=result.latency.identity_ms,
-        automation_ms=result.latency.automation_ms,
-    )
-
+    persist_started = time.perf_counter()
     attempt_id = repository.record_attempt(
         conn,
         user_id=user["id"],
@@ -148,7 +157,22 @@ def login_behavior(
         automation_score=verdict.automation_score,
         integrity_score=verdict.integrity_score,
         coverage=verdict.coverage,
-        latency_ms=total_ms,
+        latency_ms=0.0,
+    )
+    persist_ms = (time.perf_counter() - persist_started) * 1000.0
+    total_ms = (time.perf_counter() - started) * 1000.0
+    conn.execute(
+        "UPDATE auth_attempts SET latency_ms = ? WHERE id = ?",
+        (total_ms, attempt_id),
+    )
+    latency = LatencyBreakdown(
+        total_ms=total_ms,
+        validation_ms=result.latency.validation_ms,
+        extraction_ms=result.latency.extraction_ms,
+        identity_ms=result.latency.identity_ms,
+        automation_ms=result.latency.automation_ms,
+        credential_ms=credential_ms,
+        persistence_ms=persist_ms,
     )
 
     log.info(
@@ -180,6 +204,8 @@ def _to_response(
         decision=verdict.decision,
         reason=verdict.reason.value,
         message=verdict.message,
+        headline=headline(verdict.reason),
+        integrity_status=integrity_status(verdict.reason, verdict.integrity_score),
         identity_score=_round(verdict.identity_score),
         automation_score=_round(verdict.automation_score),
         integrity_score=round(verdict.integrity_score, 4),
@@ -210,6 +236,7 @@ def _reject(
     reason: ReasonCode,
     started: float,
     http_status: int | None,
+    credential_ms: float = 0.0,
 ) -> DecisionOut:
     """Block before behavioural analysis ran.
 
@@ -239,6 +266,8 @@ def _reject(
         decision="BLOCK",
         reason=reason.value,
         message=explain(reason),
+        headline=headline(reason),
+        integrity_status=integrity_status(reason, 1.0 if reason is not ReasonCode.INVALID_CREDENTIALS else 0.0),
         integrity_score=1.0 if reason is not ReasonCode.INVALID_CREDENTIALS else 0.0,
         signals=[],
         latency=LatencyBreakdown(
@@ -247,6 +276,8 @@ def _reject(
             extraction_ms=0.0,
             identity_ms=0.0,
             automation_ms=0.0,
+            credential_ms=credential_ms,
+            persistence_ms=0.0,
         ),
         session_token=None,
         attempt_id=attempt_id,
