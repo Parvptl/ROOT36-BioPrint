@@ -14,6 +14,7 @@ from app.api.routes_auth import enforce
 from app.auth.challenge import Challenge, consume_challenge, create_challenge
 from app.auth.passwords import verify_password, waste_time_like_a_real_verify
 from app.auth.sessions import issue_session
+from app.behavioral.fingerprint.adaptation import adapt_profile, classify_confidence
 from app.behavioral.ml.training import load_model_for
 from app.behavioral.scoring.reasons import ReasonCode, explain, headline, integrity_status
 from app.behavioral.scoring.risk_engine import RiskDecision, Signal, decide
@@ -190,6 +191,32 @@ def login_behavior(
         f"{verdict.identity_score:.4f}" if verdict.identity_score is not None else "n/a",
         verdict.automation_score or 0.0,
         total_ms,
+    )
+
+    # --- adaptive profile update -------------------------------------------
+    # Strictly after the decision is made and recorded. The profile that scored
+    # this attempt is never the profile this attempt modified, so a session can
+    # never influence its own verdict.
+    confidence = classify_confidence(
+        decision=verdict.decision,
+        reason=verdict.reason.value,
+        identity_score=verdict.identity_score,
+        automation_score=verdict.automation_score,
+        coverage=verdict.coverage,
+        threshold=verdict.threshold,
+    )
+    adapted, adaptation = adapt_profile(profile, result.features.as_dict(), confidence)
+    if adaptation.applied:
+        repository.save_profile(conn, user["id"], adapted)
+    repository.record_profile_update(
+        conn,
+        user_id=user["id"],
+        attempt_id=attempt_id,
+        outcome=adaptation,
+        decision=verdict.decision,
+        identity_score=verdict.identity_score,
+        automation_score=verdict.automation_score,
+        coverage=verdict.coverage,
     )
 
     token = None

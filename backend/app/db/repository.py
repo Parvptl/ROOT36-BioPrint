@@ -141,8 +141,8 @@ def save_profile(conn: sqlite3.Connection, user_id: int, profile: BehaviorProfil
     cursor = conn.execute(
         "INSERT INTO behavior_profiles "
         "(user_id, session_count, population_size, threshold, threshold_source, "
-        " calibration_json, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        " calibration_json, version, update_count, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             user_id,
             profile.session_count,
@@ -150,6 +150,8 @@ def save_profile(conn: sqlite3.Connection, user_id: int, profile: BehaviorProfil
             profile.threshold,
             profile.threshold_source,
             json.dumps(profile.calibration, separators=(",", ":")),
+            profile.version,
+            profile.update_count,
             now,
             now,
         ),
@@ -158,14 +160,18 @@ def save_profile(conn: sqlite3.Connection, user_id: int, profile: BehaviorProfil
 
     conn.executemany(
         "INSERT INTO behavior_profile_features "
-        "(profile_id, feature, modality, median, mad, scale, weight, coverage) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "(profile_id, feature, modality, median, median_long, median_recent, "
+        " median_enrolled, mad, scale, weight, coverage) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 profile_id,
                 stat.name,
                 stat.modality,
                 stat.median,
+                stat.median_long or stat.median,
+                stat.median_recent or stat.median,
+                stat.median_enrolled or stat.median,
                 stat.mad,
                 stat.scale,
                 stat.weight,
@@ -193,6 +199,9 @@ def load_profile(conn: sqlite3.Connection, user_id: int) -> BehaviorProfile | No
             name=f["feature"],
             modality=f["modality"],
             median=f["median"],
+            median_long=f["median_long"],
+            median_recent=f["median_recent"],
+            median_enrolled=f["median_enrolled"],
             mad=f["mad"],
             scale=f["scale"],
             weight=f["weight"],
@@ -210,7 +219,59 @@ def load_profile(conn: sqlite3.Connection, user_id: int) -> BehaviorProfile | No
         threshold=row["threshold"],
         threshold_source=row["threshold_source"],
         calibration=calibration,
+        version=row["version"],
+        update_count=row["update_count"],
     )
+
+
+def record_profile_update(
+    conn: sqlite3.Connection,
+    user_id: int,
+    attempt_id: int | None,
+    outcome,
+    decision: str,
+    identity_score: float | None,
+    automation_score: float | None,
+    coverage: float | None,
+) -> None:
+    """Audit an adaptation decision, including refusals.
+
+    Declined updates are recorded deliberately. "This profile has not moved in
+    forty logins because every one was medium confidence" is exactly the fact
+    you need when investigating whether a profile drifted or was poisoned.
+    """
+    conn.execute(
+        "INSERT INTO profile_updates "
+        "(user_id, attempt_id, from_version, to_version, confidence, decision, "
+        " identity_score, automation_score, coverage, features_updated, reason, "
+        " applied, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            user_id,
+            attempt_id,
+            outcome.from_version,
+            outcome.to_version,
+            outcome.confidence.value,
+            decision,
+            identity_score,
+            automation_score,
+            coverage,
+            outcome.features_updated,
+            outcome.reason,
+            1 if outcome.applied else 0,
+            time.time(),
+        ),
+    )
+
+
+def profile_update_history(
+    conn: sqlite3.Connection, user_id: int, limit: int = 30
+) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM profile_updates WHERE user_id = ? "
+        "ORDER BY created_at DESC LIMIT ?",
+        (user_id, limit),
+    ).fetchall()
 
 
 def delete_profile(conn: sqlite3.Connection, user_id: int) -> None:

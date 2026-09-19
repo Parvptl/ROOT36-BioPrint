@@ -57,11 +57,22 @@ def small_sample_inflation(n: int) -> float:
 class FeatureStat:
     name: str
     modality: str
+    # The centre scoring uses. When adaptation is running this is the blend of
+    # the two tracks below; at enrollment all three are the same value.
     median: float
     mad: float
     scale: float
     weight: float
     coverage: float
+    # Slow track: stable identity. Fast track: natural drift. Defaulted to 0.0
+    # so a profile written before adaptation existed still loads, and the
+    # adapter falls back to `median` when it sees a zero.
+    median_long: float = 0.0
+    median_recent: float = 0.0
+    # The value fitted at enrollment. Never changes. Adaptation is clamped to a
+    # bounded neighbourhood of this, so no number of accepted sessions can walk
+    # the profile arbitrarily far from the person who actually enrolled.
+    median_enrolled: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -75,6 +86,9 @@ class BehaviorProfile:
     threshold: float = 0.0
     threshold_source: str = "uncalibrated"
     calibration: dict[str, object] = field(default_factory=dict)
+    # Bumped on every adaptive update; 1 means "as enrolled, never adapted".
+    version: int = 1
+    update_count: int = 0
 
     @property
     def feature_names(self) -> tuple[str, ...]:
@@ -140,6 +154,10 @@ def fit_profile(
             name=name,
             modality=SPECS[name].modality.value,
             median=centre,
+            # Both adaptation tracks start at the enrolled centre.
+            median_long=centre,
+            median_recent=centre,
+            median_enrolled=centre,
             mad=raw_mad,
             scale=scale,
             weight=_discriminability_weight(scale, population_scale, prior),

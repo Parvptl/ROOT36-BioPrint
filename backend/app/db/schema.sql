@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS behavior_profiles (
     threshold          REAL    NOT NULL,         -- calibrated identity-score cut point
     threshold_source   TEXT    NOT NULL,         -- 'calibrated' | 'fallback_prior'
     calibration_json   TEXT    NOT NULL,         -- LOO genuine scores + method metadata
+    -- Incremented on every adaptive update. Recorded on each profile_updates
+    -- row so a profile's history is reconstructable.
+    version            INTEGER NOT NULL DEFAULT 1,
+    update_count       INTEGER NOT NULL DEFAULT 0,
     created_at         REAL    NOT NULL,
     updated_at         REAL    NOT NULL
 );
@@ -34,7 +38,13 @@ CREATE TABLE IF NOT EXISTS behavior_profile_features (
     profile_id    INTEGER NOT NULL REFERENCES behavior_profiles(id) ON DELETE CASCADE,
     feature       TEXT    NOT NULL,
     modality      TEXT    NOT NULL,
-    median        REAL    NOT NULL,              -- robust centre across enrollment sessions
+    median        REAL    NOT NULL,              -- EFFECTIVE centre used for scoring
+    -- Two timescales behind that effective value. The long track holds stable
+    -- identity; the recent track follows natural drift. `median` is their
+    -- blend, so the scoring path is unchanged by adaptation existing at all.
+    median_long   REAL    NOT NULL DEFAULT 0.0,
+    median_recent REAL    NOT NULL DEFAULT 0.0,
+    median_enrolled REAL  NOT NULL DEFAULT 0.0,
     mad           REAL    NOT NULL,              -- raw median absolute deviation
     scale         REAL    NOT NULL,              -- shrinkage-floored scale actually used
     weight        REAL    NOT NULL,              -- discriminability weight
@@ -127,6 +137,32 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_attempts_user_time ON auth_attempts(user_id, created_at DESC);
+
+-- Audit trail for adaptive profile updates, including the ones that were
+-- DECLINED.
+--
+-- Recording refusals matters as much as recording updates: "this profile has
+-- not moved in forty logins because every one was medium confidence" is the
+-- kind of fact you need when investigating whether a profile was poisoned.
+CREATE TABLE IF NOT EXISTS profile_updates (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    attempt_id       INTEGER,
+    from_version     INTEGER NOT NULL,
+    to_version       INTEGER NOT NULL,
+    confidence       TEXT    NOT NULL,           -- HIGH|MEDIUM|SUSPICIOUS|BLOCKED|BOT
+    decision         TEXT    NOT NULL,
+    identity_score   REAL,
+    automation_score REAL,
+    coverage         REAL,
+    features_updated INTEGER NOT NULL,
+    reason           TEXT    NOT NULL,
+    applied          INTEGER NOT NULL,           -- 1 updated, 0 declined
+    created_at       REAL    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_updates_user
+    ON profile_updates(user_id, created_at DESC);
 
 -- Server-side sessions issued on ALLOW. Storing a hash means a leaked DB does
 -- not hand an attacker usable session tokens.
