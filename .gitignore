@@ -34,3 +34,6 @@ Thumbs.db
 
 # Trained per-user models (regenerated at enrollment)
 backend/data/models/
+
+# Local editor and tooling configuration
+.claude/
