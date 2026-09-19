@@ -187,6 +187,11 @@ def reset_operational_state(conn: sqlite3.Connection) -> dict[str, int]:
         "population_samples",
         "users",
     )
+    # The two f-strings below are the only interpolated SQL in this codebase.
+    # `tables` is the literal tuple declared directly above; no caller supplies
+    # it and no user input reaches it. Table names cannot be bound as
+    # parameters in SQLite, so interpolation is the only option here. Every
+    # other query in the project uses bound parameters.
     counts: dict[str, int] = {}
     for table in tables:
         row = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()

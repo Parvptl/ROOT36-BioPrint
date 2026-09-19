@@ -33,11 +33,6 @@ async def lifespan(_: FastAPI):
             "BIOPRINT_SECRET_KEY is unset; generated an ephemeral key. "
             "Sessions will not survive a restart. Set it in backend/.env."
         )
-    if settings.retain_raw_events:
-        log.warning(
-            "BIOPRINT_RETAIN_RAW_EVENTS is enabled. Raw behavioural event "
-            "streams will be written to disk. Debug use only."
-        )
     yield
 
 
@@ -78,6 +73,8 @@ def health() -> dict[str, object]:
         "status": "ok",
         "service": "bioprint",
         "version": app.version,
-        "raw_event_retention": settings.retain_raw_events,
+        # Stated as a constant, not read from config: there is no switch that
+        # turns raw-event retention on. See Settings for why.
+        "raw_event_retention": False,
         "demo_reset_enabled": bool(settings.demo_reset_key),
     }

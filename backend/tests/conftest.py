@@ -20,7 +20,6 @@ os.environ["BIOPRINT_CHALLENGE_TTL_SECONDS"] = "120"
 # default: the test was right, the environment was leaking.
 os.environ["BIOPRINT_OPERATOR_KEY"] = ""
 os.environ["BIOPRINT_DEMO_RESET_KEY"] = ""
-os.environ["BIOPRINT_RETAIN_RAW_EVENTS"] = "false"
 os.environ["BIOPRINT_DISABLED_FEATURES"] = ""
 
 import itertools  # noqa: E402

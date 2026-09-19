@@ -49,7 +49,15 @@ class Settings:
     challenge_ttl_seconds: int
     session_ttl_seconds: int
     cors_origins: list[str] = field(default_factory=list)
-    retain_raw_events: bool = False
+    # There is deliberately no raw-event retention switch.
+    #
+    # An earlier version carried BIOPRINT_RETAIN_RAW_EVENTS, warned about it at
+    # startup and reported it from /health, but nothing ever implemented it: no
+    # code path wrote raw events anywhere. A setting that advertises a
+    # capability the system does not have is worse than no setting, and the
+    # privacy property is stronger stated plainly. Raw behavioural events exist
+    # only inside one function call, are extracted into features, and are
+    # dropped. There is no flag that changes that.
     # True when no secret was configured and we generated a throwaway one. An
     # ephemeral secret means every restart invalidates all sessions: fine for a
     # dev run, wrong for anything else, so startup logs a warning.
@@ -85,7 +93,6 @@ def load_settings() -> Settings:
         challenge_ttl_seconds=_env_int("BIOPRINT_CHALLENGE_TTL_SECONDS", 120),
         session_ttl_seconds=_env_int("BIOPRINT_SESSION_TTL_SECONDS", 1800),
         cors_origins=origins,
-        retain_raw_events=_env_bool("BIOPRINT_RETAIN_RAW_EVENTS", False),
         secret_is_ephemeral=ephemeral,
         demo_reset_key=os.getenv("BIOPRINT_DEMO_RESET_KEY", "").strip(),
         operator_key=os.getenv("BIOPRINT_OPERATOR_KEY", "").strip(),
