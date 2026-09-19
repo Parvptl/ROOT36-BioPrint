@@ -14,6 +14,7 @@ from app.api.routes_auth import enforce
 from app.auth.challenge import Challenge, consume_challenge, create_challenge
 from app.auth.passwords import verify_password, waste_time_like_a_real_verify
 from app.auth.sessions import issue_session
+from app.behavioral.ml.training import load_model_for
 from app.behavioral.scoring.reasons import ReasonCode, explain, headline, integrity_status
 from app.behavioral.scoring.risk_engine import RiskDecision, Signal, decide
 from app.db import repository
@@ -136,13 +137,16 @@ def login_behavior(
     assert challenge is not None
 
     # --- behavioural analysis ----------------------------------------------
-    result = run_pipeline(payload.session, challenge, profile)
+    # Inference only; the model is never updated from a login attempt.
+    model = load_model_for(user["id"])
+    result = run_pipeline(payload.session, challenge, profile, model)
     verdict = decide(
         profile=profile,
         identity=result.identity,
         automation=result.automation,
         integrity=result.integrity,
         features=result.features,
+        hybrid=result.hybrid,
     )
 
     persist_started = time.perf_counter()
@@ -154,6 +158,8 @@ def login_behavior(
         reason=verdict.reason.value,
         reasons=[s.code for s in verdict.signals],
         identity_score=verdict.identity_score,
+        statistical_identity_score=verdict.statistical_identity_score,
+        ml_anomaly_score=verdict.ml_anomaly_score,
         automation_score=verdict.automation_score,
         integrity_score=verdict.integrity_score,
         coverage=verdict.coverage,
@@ -173,6 +179,7 @@ def login_behavior(
         automation_ms=result.latency.automation_ms,
         credential_ms=credential_ms,
         persistence_ms=persist_ms,
+        ml_inference_ms=result.latency.ml_inference_ms,
     )
 
     log.info(

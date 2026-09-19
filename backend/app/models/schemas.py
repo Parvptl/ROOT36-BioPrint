@@ -112,6 +112,7 @@ class LatencyBreakdown(BaseModel):
     automation_ms: float
     credential_ms: float = 0.0
     persistence_ms: float = 0.0
+    ml_inference_ms: float = 0.0
 
 
 class DecisionOut(BaseModel):
@@ -157,6 +158,8 @@ class AttemptLogOut(BaseModel):
     decision: Literal["ALLOW", "BLOCK"]
     reason: str
     identity_score: float | None = None
+    statistical_identity_score: float | None = None
+    ml_anomaly_score: float | None = None
     automation_score: float | None = None
     integrity_score: float | None = None
     coverage: float | None = None

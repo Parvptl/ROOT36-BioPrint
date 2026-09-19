@@ -140,6 +140,7 @@ export default function SecurityPage() {
               <span>verdict</span>
               <span>reason</span>
               <span>identity</span>
+              <span>ML anom</span>
               <span>automation</span>
               <span>latency</span>
             </div>
@@ -150,6 +151,7 @@ export default function SecurityPage() {
                 <span className={a.decision === 'ALLOW' ? 'ok' : 'bad'}>{a.decision}</span>
                 <span className="dim">{a.reason}</span>
                 <span>{fmt(a.identity_score)}</span>
+                <span className="dim">{fmt(a.ml_anomaly_score)}</span>
                 <span>{fmt(a.automation_score)}</span>
                 <span className="dim">{a.latency_ms ? `${a.latency_ms.toFixed(0)}ms` : '--'}</span>
               </div>
@@ -171,6 +173,8 @@ function LatestVerdict({ attempt }: { attempt: AttemptLog }) {
       </div>
       <div className="metrics" style={{ marginTop: 20 }}>
         <Metric label="Identity deviation" value={fmt(attempt.identity_score)} />
+        <Metric label="Statistical" value={fmt(attempt.statistical_identity_score)} />
+        <Metric label="ML anomaly" value={fmt(attempt.ml_anomaly_score)} />
         <Metric label="Automation" value={fmt(attempt.automation_score)} />
         <Metric label="Integrity" value={integrityOf(attempt)} />
         <Metric label="Coverage" value={fmt(attempt.coverage)} />

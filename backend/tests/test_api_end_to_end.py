@@ -191,7 +191,14 @@ def test_enrollment_builds_a_calibrated_profile(client, age_challenge):
     status = client.get(f"/auth/profile/status?username={USERNAME}").json()
     assert status["enrolled"] is True
     assert status["threshold"] is not None
-    assert status["threshold_source"] in {"calibrated", "genuine_only", "fallback_prior"}
+    # The "+ml" suffix marks a threshold re-derived from the blended
+    # statistical+ML score rather than the statistical score alone. Blending
+    # without recalibrating would silently move the operating point.
+    assert status["threshold_source"].removesuffix("+ml") in {
+        "calibrated",
+        "genuine_only",
+        "fallback_prior",
+    }
     assert status["calibration_note"]
 
 

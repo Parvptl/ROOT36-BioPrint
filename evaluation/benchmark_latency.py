@@ -104,8 +104,13 @@ def main() -> None:
     identity = [r["identity_ms"] for r in rows]
     automation = [r["automation_ms"] for r in rows]
     persistence = [r["persistence_ms"] for r in rows]
+    ml = [r.get("ml_inference_ms", 0.0) for r in rows]
     behavioural = [
-        r["validation_ms"] + r["extraction_ms"] + r["identity_ms"] + r["automation_ms"]
+        r["validation_ms"]
+        + r["extraction_ms"]
+        + r["identity_ms"]
+        + r["automation_ms"]
+        + r.get("ml_inference_ms", 0.0)
         for r in rows
     ]
 
@@ -116,6 +121,7 @@ def main() -> None:
     report("feature extraction", extraction)
     report("identity scoring", identity)
     report("automation detection", automation)
+    report("ML anomaly (window+forest)", ml)
     report("persistence (SQLite)", persistence)
 
     print("\nAGGREGATES")

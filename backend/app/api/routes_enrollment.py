@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from dataclasses import replace
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -20,6 +21,8 @@ from app.behavioral.fingerprint.population import (
     load_population_samples,
     record_population_sample,
 )
+from app.behavioral.ml.training import train_and_store_model
+from app.behavioral.ml.windows import window_feature_dicts
 from app.behavioral.scoring.reasons import ReasonCode, explain
 from app.behavioral.scoring.risk_engine import AUTOMATION_BLOCK
 from app.db import repository
@@ -147,6 +150,12 @@ def submit_round(
     repository.add_enrollment_session(
         conn, user["id"], result.features.as_dict(), result.features.coverage
     )
+    # Window the capture now, while the raw events are still in memory. They
+    # are discarded when this request returns, so this is the only moment the
+    # ML training set can be produced without retaining them.
+    repository.add_enrollment_windows(
+        conn, user["id"], captured, window_feature_dicts(payload.session)
+    )
     captured += 1
 
     if captured < ENROLLMENT_ROUNDS:
@@ -158,7 +167,7 @@ def submit_round(
             message=f"Round {captured} recorded.",
         )
 
-    profile = _build_profile(conn, user["id"])
+    profile, ml = _build_profile(conn, user["id"])
     log.info(
         "profile built user=%s features=%d threshold=%.4f source=%s population=%d",
         user["username"],
@@ -180,6 +189,7 @@ def submit_round(
             "population_samples": profile.population_size,
             "threshold": round(profile.threshold, 4),
             "threshold_source": profile.threshold_source,
+            **ml.as_dict(),
         },
     )
 
@@ -216,7 +226,7 @@ def _reject_round(
 
 
 def _build_profile(conn: sqlite3.Connection, user_id: int):
-    """Fit, calibrate, store, and contribute to the population prior."""
+    """Fit, calibrate, train the anomaly model, store, and seed the prior."""
     sessions = repository.load_enrollment_sessions(conn, user_id)
     tag = contributor_tag(user_id)
 
@@ -226,6 +236,18 @@ def _build_profile(conn: sqlite3.Connection, user_id: int):
     population_samples = load_population_samples(conn, exclude_contributor=tag)
 
     profile = build_calibrated_profile(sessions, prior, population_samples)
+
+    # Train the anomaly model, then adopt the threshold it recalibrated for the
+    # blended score. If no model could be fitted, the statistical threshold
+    # stands and the system runs exactly as it did before.
+    ml = train_and_store_model(conn, user_id, sessions, prior)
+    if ml.trained and ml.calibration is not None:
+        profile = replace(
+            profile,
+            threshold=ml.calibration.threshold,
+            threshold_source=ml.calibration.source,
+            calibration=ml.calibration.as_json(),
+        )
 
     repository.save_profile(conn, user_id, profile)
     repository.mark_enrolled(conn, user_id)
@@ -237,4 +259,5 @@ def _build_profile(conn: sqlite3.Connection, user_id: int):
         record_population_sample(conn, features, source="enrollment", contributor=tag)
 
     repository.clear_enrollment_sessions(conn, user_id)
-    return profile
+    repository.clear_enrollment_windows(conn, user_id)
+    return profile, ml

@@ -55,6 +55,11 @@ export interface AttemptLog {
   decision: 'ALLOW' | 'BLOCK';
   reason: string;
   identity_score: number | null;
+  // The blend's components. ml_anomaly_score is present whenever a model
+  // scored the attempt, even when its weight is 0 and it did not move the
+  // decision, so the console shows what the model thought either way.
+  statistical_identity_score: number | null;
+  ml_anomaly_score: number | null;
   automation_score: number | null;
   integrity_score: number | null;
   coverage: number | null;

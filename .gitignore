@@ -31,3 +31,6 @@ evaluation/out/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Trained per-user models (regenerated at enrollment)
+backend/data/models/

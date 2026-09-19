@@ -13,6 +13,7 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
+from app.behavioral.ml.store import delete_all_models
 from app.config import settings
 from app.db import repository
 from app.db.database import db_dependency
@@ -29,6 +30,8 @@ def _row_to_attempt(row: sqlite3.Row) -> AttemptLogOut:
         decision=row["decision"],
         reason=row["reason"],
         identity_score=row["identity_score"],
+        statistical_identity_score=row["statistical_identity_score"],
+        ml_anomaly_score=row["ml_anomaly_score"],
         automation_score=row["automation_score"],
         integrity_score=row["integrity_score"],
         coverage=row["coverage"],
@@ -89,5 +92,6 @@ def demo_reset(
         )
 
     deleted = repository.reset_operational_state(conn)
+    delete_all_models()
     log.info("demo reset deleted=%s", deleted)
     return DemoResetOut(reset=True, rows_deleted=deleted)

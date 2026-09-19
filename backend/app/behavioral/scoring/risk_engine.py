@@ -29,6 +29,7 @@ from app.behavioral.bot_detection.detector import AutomationResult
 from app.behavioral.features.extractor import ExtractedFeatures
 from app.behavioral.fingerprint.profile import BehaviorProfile
 from app.behavioral.fingerprint.scoring import IdentityResult
+from app.behavioral.ml.hybrid import HybridIdentity
 from app.behavioral.scoring.integrity import IntegrityResult
 from app.behavioral.scoring.reasons import ReasonCode, band, explain
 
@@ -80,6 +81,10 @@ class RiskDecision:
     reason: ReasonCode
     message: str
     identity_score: float | None = None
+    # Components kept visible alongside the blend, because they fail
+    # differently and an operator needs to see which one drove a decision.
+    statistical_identity_score: float | None = None
+    ml_anomaly_score: float | None = None
     automation_score: float | None = None
     integrity_score: float = 0.0
     coverage: float | None = None
@@ -98,8 +103,15 @@ def decide(
     automation: AutomationResult,
     integrity: IntegrityResult,
     features: ExtractedFeatures,
+    hybrid: HybridIdentity | None = None,
 ) -> RiskDecision:
-    """Produce the verdict for one authentication attempt."""
+    """Produce the verdict for one authentication attempt.
+
+    `hybrid` carries the blended statistical+ML identity score. When absent —
+    no model for this account, or the ML layer switched off — the statistical
+    score is used directly and the behaviour is identical to before the ML
+    layer existed.
+    """
 
     # --- gate 1: integrity -------------------------------------------------
     # Ordered first because if the capture does not answer this challenge,
@@ -179,12 +191,20 @@ def decide(
     identity_signals = _explain_identity(identity, profile)
     all_signals = identity_signals + automation_signals
 
-    if identity.score > effective_threshold:
+    # The blended score when ML applied, otherwise the statistical score. The
+    # profile threshold was calibrated against whichever of the two this is.
+    decision_score = hybrid.score if hybrid is not None else identity.score
+    statistical_score = hybrid.statistical_score if hybrid is not None else identity.score
+    ml_score = hybrid.ml_score if hybrid is not None else None
+
+    if decision_score > effective_threshold:
         return RiskDecision(
             decision="BLOCK",
             reason=_dominant_modality_reason(identity),
             message=explain(ReasonCode.BEHAVIORAL_MISMATCH),
-            identity_score=identity.score,
+            identity_score=decision_score,
+            statistical_identity_score=statistical_score,
+            ml_anomaly_score=ml_score,
             automation_score=automation.score,
             integrity_score=integrity.score,
             coverage=identity.coverage,
@@ -197,7 +217,9 @@ def decide(
         decision="ALLOW",
         reason=ReasonCode.BEHAVIOR_MATCH,
         message=explain(ReasonCode.BEHAVIOR_MATCH),
-        identity_score=identity.score,
+        identity_score=decision_score,
+        statistical_identity_score=statistical_score,
+        ml_anomaly_score=ml_score,
         automation_score=automation.score,
         integrity_score=integrity.score,
         coverage=identity.coverage,

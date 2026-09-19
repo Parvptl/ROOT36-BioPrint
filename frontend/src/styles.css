@@ -386,7 +386,7 @@ button.ghost:hover { color: var(--text); border-color: var(--muted); }
 
 .ledger-row {
   display: grid;
-  grid-template-columns: 44px 1fr 74px 1.5fr 76px 84px 68px;
+  grid-template-columns: 40px 0.9fr 68px 1.3fr 68px 68px 76px 62px;
   gap: 10px;
   align-items: center;
   padding: 9px 13px;

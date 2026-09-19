@@ -55,6 +55,24 @@ CREATE TABLE IF NOT EXISTS enrollment_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_enrollment_user ON enrollment_sessions(user_id);
 
+-- Windowed feature vectors from enrollment, the training set for the per-user
+-- anomaly model.
+--
+-- These are computed at submission time, while the raw events are still in
+-- memory, precisely so the raw events can go on being discarded. What is kept
+-- is the same kind of derived statistic already stored per session, just at a
+-- finer granularity. Deleted alongside enrollment_sessions once the model is
+-- fitted.
+CREATE TABLE IF NOT EXISTS enrollment_windows (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_index INTEGER NOT NULL,
+    features_json TEXT    NOT NULL,
+    created_at    REAL    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrollment_windows_user ON enrollment_windows(user_id);
+
 -- Population prior: one row per consented sample.
 --
 -- `contributor` is a keyed hash of the user id, not the id itself. It exists
@@ -97,6 +115,10 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
     reason            TEXT    NOT NULL,          -- primary reason code
     reasons_json      TEXT    NOT NULL,          -- all contributing reason codes
     identity_score    REAL,
+    -- The blend's components, kept beside it so an operator can see which
+    -- layer drove a decision rather than only the fused number.
+    statistical_identity_score REAL,
+    ml_anomaly_score  REAL,
     automation_score  REAL,
     integrity_score   REAL,
     coverage          REAL,

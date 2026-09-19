@@ -35,6 +35,16 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 def _resolve_db_path(raw: str) -> Path:
     path = Path(raw)
     if not path.is_absolute():
@@ -69,6 +79,37 @@ class Settings:
     # purpose, so it must never default to open.
     operator_key: str = ""
 
+    # --- ML anomaly layer --------------------------------------------------
+    # Where per-user Isolation Forest models are written. Backend-only; nothing
+    # reachable from a browser writes here.
+    model_dir: Path = BACKEND_ROOT / "data" / "models"
+    # Master switch. Off falls back to the statistical layer alone, which is a
+    # fully working system, not a degraded one.
+    ml_enabled: bool = True
+    # Blend weights for the hybrid identity score. Renormalised at use, so
+    # these need not sum to one.
+    #
+    # ml_weight defaults to 0.0: the model is trained, scored, logged and shown
+    # on the operator console, but does not move the decision. This is not
+    # timidity, it is the measurement. evaluation/hybrid_comparison.py, 25
+    # enrollments, 200 genuine and 200 impostor attempts:
+    #
+    #     statistical only (1.0/0.0)   7.8% EER
+    #     hybrid           (0.8/0.2)   9.5%
+    #     hybrid           (0.6/0.4)  12.0%
+    #     ML only          (0.0/1.0)  15.5%
+    #
+    # Every weight that includes the ML term is worse, monotonically. The
+    # diagnosis is in docs/ml-layer.md: the anomaly score has a larger raw
+    # separation but a five times larger spread on genuine users, and it is
+    # positively correlated with the statistical score, so it compounds that
+    # layer's errors instead of catching them.
+    #
+    # Shipping 0.6/0.4 would knowingly ship a 54% relative increase in equal
+    # error. Set BIOPRINT_ML_WEIGHT to blend it in anyway.
+    statistical_weight: float = 1.0
+    ml_weight: float = 0.0
+
 
 def load_settings() -> Settings:
     configured_secret = os.getenv("BIOPRINT_SECRET_KEY", "").strip()
@@ -96,6 +137,10 @@ def load_settings() -> Settings:
         secret_is_ephemeral=ephemeral,
         demo_reset_key=os.getenv("BIOPRINT_DEMO_RESET_KEY", "").strip(),
         operator_key=os.getenv("BIOPRINT_OPERATOR_KEY", "").strip(),
+        model_dir=_resolve_db_path(os.getenv("BIOPRINT_MODEL_DIR", "data/models")),
+        ml_enabled=_env_bool("BIOPRINT_ML_ENABLED", True),
+        statistical_weight=_env_float("BIOPRINT_STATISTICAL_WEIGHT", 1.0),
+        ml_weight=_env_float("BIOPRINT_ML_WEIGHT", 0.0),
     )
 
 

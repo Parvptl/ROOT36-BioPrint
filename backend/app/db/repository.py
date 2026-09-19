@@ -75,6 +75,52 @@ def count_enrollment_sessions(conn: sqlite3.Connection, user_id: int) -> int:
     return int(row["n"])
 
 
+def add_enrollment_windows(
+    conn: sqlite3.Connection,
+    user_id: int,
+    session_index: int,
+    windows: list[dict[str, float]],
+) -> None:
+    """Store the windowed feature vectors for one enrollment round.
+
+    Derived features only, exactly like the session-level row. The raw events
+    they came from are discarded in the same request that writes these.
+    """
+    if not windows:
+        return
+    now = time.time()
+    conn.executemany(
+        "INSERT INTO enrollment_windows "
+        "(user_id, session_index, features_json, created_at) VALUES (?, ?, ?, ?)",
+        [
+            (user_id, session_index, json.dumps(w, separators=(",", ":")), now)
+            for w in windows
+        ],
+    )
+
+
+def load_enrollment_windows(
+    conn: sqlite3.Connection, user_id: int
+) -> list[tuple[int, dict[str, float]]]:
+    """Every stored window as (session_index, features).
+
+    The session index travels with each window so leave-one-session-out
+    calibration can hold out a whole round rather than individual windows.
+    Windows from the same round overlap, so splitting between them would leak
+    the held-out data straight back into training.
+    """
+    rows = conn.execute(
+        "SELECT session_index, features_json FROM enrollment_windows "
+        "WHERE user_id = ? ORDER BY id",
+        (user_id,),
+    ).fetchall()
+    return [(int(r["session_index"]), json.loads(r["features_json"])) for r in rows]
+
+
+def clear_enrollment_windows(conn: sqlite3.Connection, user_id: int) -> None:
+    conn.execute("DELETE FROM enrollment_windows WHERE user_id = ?", (user_id,))
+
+
 def clear_enrollment_sessions(conn: sqlite3.Connection, user_id: int) -> None:
     """Drop captured rounds once a profile has been fitted from them.
 
@@ -170,6 +216,11 @@ def load_profile(conn: sqlite3.Connection, user_id: int) -> BehaviorProfile | No
 def delete_profile(conn: sqlite3.Connection, user_id: int) -> None:
     conn.execute("DELETE FROM behavior_profiles WHERE user_id = ?", (user_id,))
     conn.execute("UPDATE users SET enrolled_at = NULL WHERE id = ?", (user_id,))
+    # The anomaly model is part of the profile even though it lives on disk.
+    # Leaving it behind would let a stale model score a freshly re-enrolled user.
+    from app.behavioral.ml.store import delete_model
+
+    delete_model(user_id)
 
 
 def reset_operational_state(conn: sqlite3.Connection) -> dict[str, int]:
@@ -182,6 +233,7 @@ def reset_operational_state(conn: sqlite3.Connection) -> dict[str, int]:
         "auth_attempts",
         "auth_challenges",
         "enrollment_sessions",
+        "enrollment_windows",
         "behavior_profile_features",
         "behavior_profiles",
         "population_samples",
@@ -215,6 +267,8 @@ def record_attempt(
     integrity_score: float,
     coverage: float | None,
     latency_ms: float,
+    statistical_identity_score: float | None = None,
+    ml_anomaly_score: float | None = None,
 ) -> int:
     """Append to the decision audit trail.
 
@@ -224,8 +278,9 @@ def record_attempt(
     cursor = conn.execute(
         "INSERT INTO auth_attempts "
         "(user_id, username_attempt, decision, reason, reasons_json, identity_score, "
+        " statistical_identity_score, ml_anomaly_score, "
         " automation_score, integrity_score, coverage, latency_ms, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             user_id,
             username_attempt,
@@ -233,6 +288,8 @@ def record_attempt(
             reason,
             json.dumps(reasons, separators=(",", ":")),
             identity_score,
+            statistical_identity_score,
+            ml_anomaly_score,
             automation_score,
             integrity_score,
             coverage,

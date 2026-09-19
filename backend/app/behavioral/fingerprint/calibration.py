@@ -173,6 +173,19 @@ def calibrate(
     provisional = BehaviorProfile(features=profile_features, session_count=len(sessions))
     impostor = _impostor_scores(provisional, population_samples)
 
+    return derive_threshold(genuine, impostor)
+
+
+def derive_threshold(
+    genuine: list[float], impostor: list[float]
+) -> CalibrationResult:
+    """Pick an operating point from genuine and impostor score distributions.
+
+    Split out of calibrate() so the hybrid path can reuse it verbatim. When ML
+    evidence is blended into the identity score, the threshold has to be
+    derived from the *blended* scores; reusing this function is what keeps the
+    two paths from drifting into different threshold policies.
+    """
     if len(genuine) >= MIN_GENUINE_SCORES and len(impostor) >= MIN_IMPOSTOR_SCORES:
         threshold, metrics = _sweep(genuine, impostor)
         note = (
