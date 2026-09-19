@@ -14,6 +14,14 @@ _TMP_DIR = Path(tempfile.mkdtemp(prefix="bioprint-test-"))
 os.environ["BIOPRINT_DB_PATH"] = str(_TMP_DIR / "test.db")
 os.environ["BIOPRINT_SECRET_KEY"] = "test-only-secret-value-not-used-anywhere-else"
 os.environ["BIOPRINT_CHALLENGE_TTL_SECONDS"] = "120"
+# Pin every optional key OFF, so the suite does not inherit whatever the
+# developer happens to have in backend/.env. Setting BIOPRINT_OPERATOR_KEY
+# locally silently broke the test asserting the dashboard is closed by
+# default: the test was right, the environment was leaking.
+os.environ["BIOPRINT_OPERATOR_KEY"] = ""
+os.environ["BIOPRINT_DEMO_RESET_KEY"] = ""
+os.environ["BIOPRINT_RETAIN_RAW_EVENTS"] = "false"
+os.environ["BIOPRINT_DISABLED_FEATURES"] = ""
 
 import itertools  # noqa: E402
 
