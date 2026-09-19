@@ -36,12 +36,12 @@ export interface Decision {
   decision: 'ALLOW' | 'BLOCK';
   reason: string;
   message: string;
-  identity_score: number | null;
-  automation_score: number | null;
-  integrity_score: number;
-  coverage: number | null;
-  threshold: number | null;
-  modality_scores: Record<string, number> | null;
+  // No identity_score, automation_score or threshold by design: returning them
+  // would let an attacker holding a correct password read their exact distance
+  // from acceptance and hill-climb toward it. See DecisionOut in the backend.
+  headline: string | null;
+  integrity_status: string | null;
+  coverage_band: 'LOW' | 'MEDIUM' | 'HIGH' | null;
   signals: SignalDetail[];
   latency: LatencyBreakdown;
   session_token: string | null;

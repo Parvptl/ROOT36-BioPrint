@@ -56,6 +56,36 @@ def client(fresh_db_path):
 
 
 @pytest.fixture
+def audit(fresh_db_path):
+    """Read exact scores from the decision audit trail.
+
+    The login response deliberately withholds identity and automation scores
+    so it cannot be used as a tuning oracle. Tests that need the real numbers
+    read them from where they are actually kept.
+    """
+    import sqlite3
+
+    def _rows() -> list[dict]:
+        conn = sqlite3.connect(fresh_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            return [
+                dict(r)
+                for r in conn.execute("SELECT * FROM auth_attempts ORDER BY id")
+            ]
+        finally:
+            conn.close()
+
+    def _last() -> dict:
+        rows = _rows()
+        assert rows, "no authentication attempt was recorded"
+        return rows[-1]
+
+    _rows.last = _last  # type: ignore[attr-defined]
+    return _rows
+
+
+@pytest.fixture
 def age_challenge(fresh_db_path):
     """Back-date a challenge to simulate time the user spent filling the form.
 
@@ -80,3 +110,25 @@ def age_challenge(fresh_db_path):
             conn.close()
 
     return _age
+
+
+OPERATOR_KEY = "test-operator-key"
+
+
+@pytest.fixture
+def with_operator_key(monkeypatch):
+    """Enable the operator dashboard for one test.
+
+    Settings is a frozen dataclass, so the module global is rebound with a
+    modified copy rather than mutated. routes_ops holds `settings` as a module
+    attribute, which is what the endpoint reads.
+    """
+    from dataclasses import replace
+
+    import app.api.routes_ops as routes_ops
+    from app.config import settings
+
+    monkeypatch.setattr(
+        routes_ops, "settings", replace(settings, operator_key=OPERATOR_KEY)
+    )
+    return OPERATOR_KEY

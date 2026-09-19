@@ -115,24 +115,35 @@ class LatencyBreakdown(BaseModel):
 
 
 class DecisionOut(BaseModel):
-    """The authentication verdict.
+    """What the person attempting to log in is told.
 
-    Every numeric field here is computed server-side from the raw event stream.
-    None of them is accepted from the client under any circumstance.
+    Deliberately carries no exact identity score, no automation score and no
+    threshold. An earlier version returned all three, which made this endpoint
+    a tuning oracle: an attacker holding a correct password could read their
+    precise deviation and the exact bar to clear, then hill-climb toward it.
+    Returning coarse categories instead costs them roughly a bit and a half per
+    attempt rather than a full gradient, and every attempt already costs a
+    single-use challenge and is rate limited.
+
+    The exact numbers still exist. They are written to the audit trail and
+    served by the operator dashboard, which is key-gated. The subject of a
+    decision does not get the gradient; the operator does.
+    Everything here is computed server-side from the raw event stream. None of
+    it is accepted from the client under any circumstance.
     """
 
     decision: Literal["ALLOW", "BLOCK"]
     reason: str
     message: str
     headline: str | None = None
+    # PASS or FAIL. Integrity is genuinely binary, so a category loses nothing.
     integrity_status: str | None = None
-    identity_score: float | None = None
-    automation_score: float | None = None
-    integrity_score: float
-    coverage: float | None = None
-    threshold: float | None = None
-    modality_scores: dict[str, float] | None = None
+    # Which categories of signal disagreed, each banded LOW/MEDIUM/HIGH. This
+    # is the explainability the user is owed without handing over a gradient.
     signals: list[SignalDetail] = Field(default_factory=list)
+    # How much of the enrolled profile could be compared, banded. A user who is
+    # told "not enough was captured" needs to know that much to retry usefully.
+    coverage_band: Literal["LOW", "MEDIUM", "HIGH"] | None = None
     latency: LatencyBreakdown
     session_token: str | None = None
     attempt_id: int | None = None

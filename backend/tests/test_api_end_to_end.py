@@ -268,7 +268,7 @@ def test_case_a_genuine_user_is_allowed(client, age_challenge):
     assert verdict["latency"]["total_ms"] > 0
 
 
-def test_case_b_correct_password_wrong_behaviour_is_blocked(client, age_challenge):
+def test_case_b_correct_password_wrong_behaviour_is_blocked(client, age_challenge, audit):
     """The central claim: the password is necessary but not sufficient."""
     register(client)
     enroll(client, age_challenge)
@@ -281,11 +281,12 @@ def test_case_b_correct_password_wrong_behaviour_is_blocked(client, age_challeng
         "POINTER_MISMATCH", "INTERACTION_MISMATCH",
     }
     assert verdict["session_token"] is None
-    assert verdict["identity_score"] > verdict["threshold"]
     assert verdict["signals"]
+    # The response withholds the exact score on purpose; the audit trail keeps it.
+    assert audit.last()["identity_score"] > 0.0
 
 
-def test_case_c_scripted_attempt_is_blocked_as_automation(client, age_challenge):
+def test_case_c_scripted_attempt_is_blocked_as_automation(client, age_challenge, audit):
     """Reported as automation, not as a behavioural mismatch.
 
     They are different findings and the system distinguishes them.
@@ -303,11 +304,11 @@ def test_case_c_scripted_attempt_is_blocked_as_automation(client, age_challenge)
 
     assert verdict["decision"] == "BLOCK", verdict
     assert verdict["reason"] == "AUTOMATION_DETECTED"
-    assert verdict["automation_score"] > 0.5
     assert verdict["session_token"] is None
+    assert audit.last()["automation_score"] > 0.5
 
 
-def test_case_d_wrong_password_is_an_ordinary_credential_rejection(client, age_challenge):
+def test_case_d_wrong_password_is_an_ordinary_credential_rejection(client, age_challenge, audit):
     register(client)
     enroll(client, age_challenge)
 
@@ -316,8 +317,10 @@ def test_case_d_wrong_password_is_an_ordinary_credential_rejection(client, age_c
     assert verdict["decision"] == "BLOCK"
     assert verdict["reason"] == "INVALID_CREDENTIALS"
     assert verdict["session_token"] is None
-    # Behavioural analysis never ran, so there is nothing to report about it.
-    assert verdict["identity_score"] is None
+    # Behavioural analysis never ran, so nothing was scored.
+    recorded = audit.last()
+    assert recorded["identity_score"] is None
+    assert recorded["automation_score"] is None
 
 
 def test_value_injection_attempt_is_blocked(client, age_challenge):
@@ -369,7 +372,7 @@ def test_genuine_user_is_allowed_repeatedly(client, age_challenge):
     # rejected has probability well under one percent.
     assert len(allowed) >= int(attempts * 0.75), (
         f"false rejection rate {len(rejected) / attempts:.0%} exceeds the 25% bound; "
-        f"rejections: {[(v['reason'], v['identity_score'], v['threshold']) for v in rejected]}"
+        f"rejections: {[v['reason'] for v in rejected]}"
     )
     # Every rejection must still be a behavioural decision, never a crash, an
     # integrity failure, or an automation misfire on a genuine human.
@@ -403,7 +406,7 @@ def test_impostor_is_blocked_repeatedly(client, age_challenge):
     blocked = [v for v in verdicts if v["decision"] == "BLOCK"]
 
     assert len(blocked) == len(verdicts), [
-        (v["decision"], v["reason"], v["identity_score"]) for v in verdicts
+        (v["decision"], v["reason"]) for v in verdicts
     ]
 
 

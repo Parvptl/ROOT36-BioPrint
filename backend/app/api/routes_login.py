@@ -206,17 +206,31 @@ def _to_response(
         message=verdict.message,
         headline=headline(verdict.reason),
         integrity_status=integrity_status(verdict.reason, verdict.integrity_score),
-        identity_score=_round(verdict.identity_score),
-        automation_score=_round(verdict.automation_score),
-        integrity_score=round(verdict.integrity_score, 4),
-        coverage=_round(verdict.coverage),
-        threshold=_round(verdict.threshold),
-        modality_scores={k: round(v, 4) for k, v in verdict.modality_scores.items()} or None,
+        # No identity score, no automation score, no threshold. See the
+        # DecisionOut docstring: returning them made this endpoint a tuning
+        # oracle. The exact values go to the audit trail and the key-gated
+        # operator dashboard instead.
         signals=[_signal(s) for s in verdict.signals],
+        coverage_band=_coverage_band(verdict.coverage),
         latency=latency,
         session_token=token,
         attempt_id=attempt_id,
     )
+
+
+def _coverage_band(coverage: float | None) -> str | None:
+    """Coarse view of how much of the profile could be compared.
+
+    Inverted relative to the deviation bands: high coverage is good, so a user
+    told LOW knows to interact with the form more before retrying.
+    """
+    if coverage is None:
+        return None
+    if coverage >= 0.8:
+        return "HIGH"
+    if coverage >= 0.5:
+        return "MEDIUM"
+    return "LOW"
 
 
 def _signal(signal: Signal) -> SignalDetail:
@@ -267,8 +281,9 @@ def _reject(
         reason=reason.value,
         message=explain(reason),
         headline=headline(reason),
-        integrity_status=integrity_status(reason, 1.0 if reason is not ReasonCode.INVALID_CREDENTIALS else 0.0),
-        integrity_score=1.0 if reason is not ReasonCode.INVALID_CREDENTIALS else 0.0,
+        integrity_status=integrity_status(
+            reason, 1.0 if reason is not ReasonCode.INVALID_CREDENTIALS else 0.0
+        ),
         signals=[],
         latency=LatencyBreakdown(
             total_ms=total_ms,

@@ -204,10 +204,13 @@ function VerdictPanel({ decision, onRetry }: { decision: Decision; onRetry: () =
             ))}
           </div>
 
+          {/* Categories, not numbers. The exact identity and automation
+              scores are withheld from whoever is attempting the login so this
+              page cannot be used to tune an impersonation; they are served to
+              the operator dashboard instead. */}
           <div className="metrics">
-            <Metric label="Identity deviation" value={decision.identity_score} />
-            <Metric label="Automation" value={decision.automation_score} />
-            <Metric label="Signal coverage" value={decision.coverage} />
+            <Metric label="Integrity" value={decision.integrity_status} />
+            <Metric label="Signal coverage" value={decision.coverage_band} />
             <Metric label="Decision latency" value={`${decision.latency.total_ms.toFixed(1)} ms`} />
           </div>
         </div>

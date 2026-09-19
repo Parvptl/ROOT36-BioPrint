@@ -32,6 +32,14 @@ ALICE = TypingStyle(
     iki_mean_ms=140.0, dwell_mean_ms=82.0, overlap_prob=0.45,
     right_shift_prob=0.95, tab_between_fields=True, pointer_speed=1.6,
 )
+# A clearly different typist, for tests that need a reliable BLOCK rather than
+# a realistic impostor. Reliability rates are measured in the evaluation sweep,
+# not here.
+MALLORY = TypingStyle(
+    iki_mean_ms=320.0, dwell_mean_ms=140.0, overlap_prob=0.01,
+    right_shift_prob=0.02, tab_between_fields=False, pointer_speed=0.6,
+    backspace_prob=0.14, pause_prob=0.20,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -443,8 +451,9 @@ def test_wrong_password_blocks_before_behavioral_analysis(client, age_challenge)
     assert body["decision"] == "BLOCK"
     assert "credential" in body["reason"].lower()
     # No identity or automation score should be computed for wrong password
-    assert body["identity_score"] is None
-    assert body["automation_score"] is None
+    # Scores are no longer returned to the client at all; see DecisionOut.
+    assert "identity_score" not in body
+    assert "automation_score" not in body
 
 
 def test_nonexistent_user_gets_block(client, age_challenge):
@@ -595,8 +604,8 @@ def test_scripted_input_blocked_at_login(client, age_challenge):
     assert r.status_code == 200
     body = r.json()
     assert body["decision"] == "BLOCK"
-    assert body["automation_score"] is not None
-    assert body["automation_score"] > 0.5
+    # The client is told the category, not the number.
+    assert body["headline"] == "AUTOMATION DETECTED"
 
 
 def test_value_injection_blocked_at_login(client, age_challenge):
@@ -613,3 +622,106 @@ def test_value_injection_blocked_at_login(client, age_challenge):
     assert r.status_code == 200
     body = r.json()
     assert body["decision"] == "BLOCK"
+
+
+# --------------------------------------------------- decision is not an oracle
+
+
+# Fields that would let an attacker holding a correct password hill-climb
+# toward acceptance by reading their exact distance from the bar.
+ORACLE_FIELDS = ("identity_score", "automation_score", "threshold", "modality_scores")
+
+
+def test_login_response_leaks_no_score_or_threshold(client, age_challenge):
+    """The subject of a decision must not receive the gradient.
+
+    An earlier version returned the exact identity score, automation score and
+    threshold on every attempt. That turns the endpoint into a tuning oracle:
+    an attacker who already has the password can vary their behaviour and read
+    off whether they are getting warmer.
+    """
+    register(client)
+    enroll(client, age_challenge)
+
+    for factory in (
+        lambda p, n: human_session(p, nonce=n, style=ALICE, seed=880,
+                                   username=USERNAME, password=PASSWORD),
+        lambda p, n: human_session(p, nonce=n, style=MALLORY, seed=881,
+                                   username=USERNAME, password=PASSWORD),
+        lambda p, n: scripted_session(p, nonce=n, username=USERNAME, password=PASSWORD),
+    ):
+        body = attempt_login(client, age_challenge, factory).json()
+        for field in ORACLE_FIELDS:
+            assert field not in body, f"{field} leaked in {body['reason']} response"
+
+
+def test_blocked_response_still_explains_which_category_disagreed(client, age_challenge):
+    """Withholding the number must not mean withholding the reason.
+
+    Explainability is a product requirement; the gradient is not.
+    """
+    register(client)
+    enroll(client, age_challenge)
+
+    body = attempt_login(
+        client, age_challenge,
+        lambda p, n: human_session(p, nonce=n, style=MALLORY, seed=882,
+                                   username=USERNAME, password=PASSWORD),
+    ).json()
+
+    assert body["decision"] == "BLOCK"
+    assert body["headline"]
+    assert body["message"]
+    assert body["signals"], "a blocked user must still be told which category disagreed"
+    for signal in body["signals"]:
+        assert signal["band"] in {"LOW", "MEDIUM", "HIGH"}
+
+
+def test_exact_scores_are_still_recorded_for_the_operator(client, age_challenge, audit):
+    """Withheld from the client, not discarded."""
+    register(client)
+    enroll(client, age_challenge)
+    attempt_login(
+        client, age_challenge,
+        lambda p, n: human_session(p, nonce=n, style=MALLORY, seed=883,
+                                   username=USERNAME, password=PASSWORD),
+    )
+
+    recorded = audit.last()
+    assert recorded["identity_score"] is not None
+    assert recorded["automation_score"] is not None
+
+
+# ------------------------------------------------------- operator dashboard
+
+
+def test_dashboard_is_disabled_when_no_operator_key_is_configured(client):
+    """Closed by default. It serves exactly what the login response withholds."""
+    assert client.get("/security/dashboard").status_code == 404
+
+
+def test_dashboard_rejects_a_missing_or_wrong_operator_key(client, with_operator_key):
+    assert client.get("/security/dashboard").status_code == 401
+    assert client.get(
+        "/security/dashboard", headers={"X-Operator-Key": "wrong"}
+    ).status_code == 401
+
+
+def test_dashboard_serves_exact_scores_with_the_operator_key(
+    client, age_challenge, with_operator_key
+):
+    register(client)
+    enroll(client, age_challenge)
+    attempt_login(
+        client, age_challenge,
+        lambda p, n: human_session(p, nonce=n, style=MALLORY, seed=884,
+                                   username=USERNAME, password=PASSWORD),
+    )
+
+    response = client.get(
+        "/security/dashboard", headers={"X-Operator-Key": with_operator_key}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["latest"]["identity_score"] is not None
+    assert body["attempts"]

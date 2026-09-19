@@ -56,6 +56,10 @@ class Settings:
     secret_is_ephemeral: bool = False
     # Empty disables the HTTP demo-reset endpoint. The CLI reset never needs it.
     demo_reset_key: str = ""
+    # Empty disables the operator dashboard. It serves exact per-attempt
+    # identity and automation scores, which the login response withholds on
+    # purpose, so it must never default to open.
+    operator_key: str = ""
 
 
 def load_settings() -> Settings:
@@ -84,6 +88,7 @@ def load_settings() -> Settings:
         retain_raw_events=_env_bool("BIOPRINT_RETAIN_RAW_EVENTS", False),
         secret_is_ephemeral=ephemeral,
         demo_reset_key=os.getenv("BIOPRINT_DEMO_RESET_KEY", "").strip(),
+        operator_key=os.getenv("BIOPRINT_OPERATOR_KEY", "").strip(),
     )
 
 
