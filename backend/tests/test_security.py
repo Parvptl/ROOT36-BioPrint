@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 import pytest
 
@@ -725,3 +726,54 @@ def test_dashboard_serves_exact_scores_with_the_operator_key(
     body = response.json()
     assert body["latest"]["identity_score"] is not None
     assert body["attempts"]
+
+
+# ------------------------------------------------- bundled frontend serving
+
+
+def test_static_fallback_cannot_escape_the_bundle(client, tmp_path, monkeypatch):
+    """Path traversal through the SPA fallback must not serve backend files.
+
+    The fallback resolves an arbitrary user-supplied path against the bundle
+    directory. Without resolving and checking containment, a request for
+    ../../backend/.env would hand over the signing secret.
+    """
+    import app.main as main
+
+    bundle = tmp_path / "dist"
+    (bundle / "assets").mkdir(parents=True)
+    (bundle / "index.html").write_text("<html>spa</html>", encoding="utf-8")
+    secret = tmp_path / "secret.env"
+    secret.write_text("BIOPRINT_SECRET_KEY=leaked", encoding="utf-8")
+
+    monkeypatch.setattr(main, "FRONTEND_DIST", bundle)
+
+    for attempt in ("../secret.env", "../../secret.env", "./../secret.env"):
+        response = main.serve_frontend(attempt)
+        served = Path(response.path).read_text(encoding="utf-8")
+        assert "leaked" not in served, f"traversal succeeded via {attempt}"
+        assert served == "<html>spa</html>"
+
+
+def test_static_fallback_serves_index_for_client_routes(client, tmp_path, monkeypatch):
+    import app.main as main
+
+    bundle = tmp_path / "dist"
+    bundle.mkdir()
+    (bundle / "index.html").write_text("<html>spa</html>", encoding="utf-8")
+    monkeypatch.setattr(main, "FRONTEND_DIST", bundle)
+
+    for route in ("login", "enroll", "security", ""):
+        response = main.serve_frontend(route)
+        assert Path(response.path).name == "index.html"
+
+
+def test_api_routes_are_not_shadowed_by_the_static_catch_all():
+    """The catch-all must be registered last or it swallows the whole API."""
+    from app.main import app
+
+    paths = [getattr(route, "path", "") for route in app.routes]
+    catch_all = [i for i, p in enumerate(paths) if "{requested_path" in p]
+
+    if catch_all:  # only mounted when a build exists
+        assert catch_all[0] == len(paths) - 1, "catch-all is not the last route"

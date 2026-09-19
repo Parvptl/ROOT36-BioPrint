@@ -324,21 +324,37 @@ Create `backend/.env` (copy `.env.example`) and generate a secret:
 python -c "import secrets; print('BIOPRINT_SECRET_KEY=' + secrets.token_urlsafe(48))"
 ```
 
-Run it:
+On macOS/Linux use `.venv/bin/python` instead of `./.venv/Scripts/python.exe`
+throughout.
+
+### Quickest path — one port, one command
+
+Build the frontend once, then run only the backend. It serves the built app
+itself, so the browser and the API share an origin and **no CORS setup is
+involved**.
 
 ```bash
-cd backend && ./.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
+cd frontend && npm install && npm run build
+cd ../backend && ./.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
 ```
 
-On macOS/Linux use `.venv/bin/python` instead of `./.venv/Scripts/python.exe`.
+Open <http://127.0.0.1:8000>. The **dummy login page is at `/login`**, enrollment
+at `/enroll`, the operator console at `/security`.
 
-**Frontend**
+Confirm the bundle was picked up — `GET /health` reports
+`"frontend_bundled": true`.
+
+### Development mode — two ports, hot reload
 
 ```bash
-cd frontend && npm install && npm run dev
+cd backend && ./.venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000
+cd frontend && npm run dev          # separate terminal
 ```
 
-Open <http://localhost:5173>. The dummy login page is at `/login`.
+Open <http://localhost:5173>. This path *does* cross origins, which is why
+`BIOPRINT_CORS_ORIGINS` defaults to the Vite dev server. If you serve the built
+bundle from some other port instead, add that origin there — or just use the
+single-port path above, which avoids the problem entirely.
 
 ## 13. Using it
 

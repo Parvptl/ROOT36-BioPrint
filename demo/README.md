@@ -14,15 +14,17 @@ scripted attempt, both detected and blocked.
 the person who will demo, typing normally. A profile built any other way will
 not match them at the keyboard and the demo will fail in front of the panel.
 
-```bash
-# terminal 1
-cd backend && ./.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
+Build the frontend once, then run the backend — it serves the built app, so
+everything is on one port and there is no CORS to get wrong live.
 
-# terminal 2
-cd frontend && npm run dev
+```bash
+cd frontend && npm run build
+cd ../backend && ./.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
 ```
 
-Go to <http://localhost:5173/enroll>, register, complete all **8 rounds**. Type
+Check <http://127.0.0.1:8000/health> shows `"frontend_bundled": true`.
+
+Go to <http://127.0.0.1:8000/enroll>, register, complete all **8 rounds**. Type
 the way you normally type — do not be careful or neat. An artificially tidy
 baseline rejects the real you later.
 
@@ -195,7 +197,7 @@ failing on integrity. Then:
 |---|---|
 | Genuine login blocked | Retry, and explain the 7% FRR. Don't hide it |
 | Console won't unlock | `BIOPRINT_OPERATOR_KEY` unset or server not restarted since setting it |
-| "Cannot reach the service" | Backend down. Restart terminal 1 |
+| "Cannot reach the service" | Backend down, or the bundle was served from another port. Restart the backend |
 | Attack script errors | Run from `backend/`, not the repo root |
 | Everything is wrong | `python -m app.demo_reset`, then re-enroll. **Needs ~4 min** |
 
