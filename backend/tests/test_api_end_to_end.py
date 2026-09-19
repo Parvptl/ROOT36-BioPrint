@@ -383,19 +383,39 @@ def test_genuine_user_is_allowed_repeatedly(client, age_challenge):
         }, verdict
 
 
-def test_a_single_genuine_login_is_allowed(client, age_challenge):
-    """Deterministic wiring check for the ALLOW path.
+def test_the_allow_path_is_reachable(client, age_challenge):
+    """Wiring check: a genuine user can get in, and gets a session when they do.
 
-    Separate from the rate test above: this one exists to catch the pipeline
-    being broken outright, so it uses one attempt and a plain assertion.
+    Takes a few attempts rather than one. An earlier version asserted that a
+    single genuine login must succeed and called itself deterministic, which
+    was wrong: the challenge phrase is drawn from the CSPRNG, so every genuine
+    attempt carries the system's real false rejection rate of roughly 7
+    percent. That test failed about one run in twenty, and the failure was
+    correct behaviour being asserted away.
+
+    What this test is actually for is catching the ALLOW path being broken
+    outright. Three attempts make that near-certain to detect while leaving
+    the rate itself to the test above, which measures it properly.
     """
     register(client)
     enroll(client, age_challenge)
 
-    verdict = attempt_login(client, age_challenge, genuine(900))
+    verdicts = []
+    for seed in (900, 901, 902):
+        limiter.reset()
+        verdicts.append(attempt_login(client, age_challenge, genuine(seed)))
 
-    assert verdict["decision"] == "ALLOW", verdict
-    assert verdict["session_token"]
+    allowed = [v for v in verdicts if v["decision"] == "ALLOW"]
+    assert allowed, (
+        "no genuine attempt was allowed in three tries; at the measured rate "
+        f"that is a one-in-3000 coincidence: {[(v['reason']) for v in verdicts]}"
+    )
+    assert allowed[0]["session_token"], "an allowed login must issue a session"
+
+    # A session token must never accompany a block.
+    for verdict in verdicts:
+        if verdict["decision"] == "BLOCK":
+            assert verdict["session_token"] is None
 
 
 def test_impostor_is_blocked_repeatedly(client, age_challenge):
