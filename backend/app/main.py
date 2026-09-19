@@ -53,7 +53,15 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    # X-Operator-Key and X-Demo-Reset-Key must be listed explicitly: a browser
+    # will not even send the preflight-approved request without them here, so
+    # omitting one makes the endpoint look unreachable rather than forbidden.
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Operator-Key",
+        "X-Demo-Reset-Key",
+    ],
 )
 
 

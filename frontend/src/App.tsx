@@ -2,6 +2,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 
 import EnrollPage from './pages/EnrollPage';
 import LoginPage from './pages/LoginPage';
+import SecurityPage from './pages/SecurityPage';
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <nav className="navlinks">
           <NavLink to="/login">Login</NavLink>
           <NavLink to="/enroll">Enroll</NavLink>
+          <NavLink to="/security">Console</NavLink>
         </nav>
       </header>
 
@@ -24,6 +26,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/enroll" element={<EnrollPage />} />
+        <Route path="/security" element={<SecurityPage />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </div>

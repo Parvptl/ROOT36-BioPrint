@@ -48,6 +48,26 @@ export interface Decision {
   attempt_id: number | null;
 }
 
+/** One audit-trail row. Operator-facing, so it carries the exact scores. */
+export interface AttemptLog {
+  attempt_id: number;
+  username: string;
+  decision: 'ALLOW' | 'BLOCK';
+  reason: string;
+  identity_score: number | null;
+  automation_score: number | null;
+  integrity_score: number | null;
+  coverage: number | null;
+  latency_ms: number | null;
+  created_at: number;
+}
+
+export interface Dashboard {
+  latest: AttemptLog | null;
+  attempts: AttemptLog[];
+  demo_reset_enabled: boolean;
+}
+
 export interface ProfileStatus {
   username: string;
   enrolled: boolean;
