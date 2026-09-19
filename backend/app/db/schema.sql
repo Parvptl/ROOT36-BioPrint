@@ -42,14 +42,33 @@ CREATE TABLE IF NOT EXISTS behavior_profile_features (
     PRIMARY KEY (profile_id, feature)
 );
 
--- Population prior: one row per consented sample contributed by a volunteer.
--- Stores extracted features only, and is never linked back to a user identity.
+-- Captured enrollment rounds, held until there are enough to fit a profile.
+-- Features only; the raw events that produced them were discarded at the
+-- moment of extraction.
+CREATE TABLE IF NOT EXISTS enrollment_sessions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    features_json TEXT    NOT NULL,
+    coverage      REAL    NOT NULL,
+    created_at    REAL    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrollment_user ON enrollment_sessions(user_id);
+
+-- Population prior: one row per consented sample.
+--
+-- `contributor` is a keyed hash of the user id, not the id itself. It exists
+-- only so a user's own samples can be excluded from the population they are
+-- compared against; without the server secret it cannot be linked to anyone.
 CREATE TABLE IF NOT EXISTS population_samples (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     source        TEXT NOT NULL,                 -- 'enrollment' | 'volunteer'
+    contributor   TEXT,
     features_json TEXT NOT NULL,
     created_at    REAL NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_population_contributor ON population_samples(contributor);
 
 -- Single-use, expiring behavioural challenges. `consumed_at` is what makes a
 -- replayed nonce fail on the second use.

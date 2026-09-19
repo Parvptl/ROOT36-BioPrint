@@ -109,44 +109,61 @@ def fit_population_prior(samples: list[dict[str, float]]) -> PopulationPrior:
 # ------------------------------------------------------------------ storage
 
 
-def record_population_sample(
-    conn: sqlite3.Connection, features: dict[str, float], source: str
-) -> None:
-    """Store one consented sample.
+def contributor_tag(user_id: int) -> str:
+    """Keyed hash identifying a contributor without naming them.
 
-    Derived features only, and no link to a user id. The table is a statistical
-    reference, not a second copy of anyone's behavioural profile.
+    Lets a user's own samples be excluded from the population they are scored
+    against, while keeping the population table unlinkable to an identity by
+    anyone without the server secret.
     """
+    import hashlib
+
+    from app.config import settings
+
+    digest = hashlib.sha256(
+        f"{settings.secret_key}:population:{user_id}".encode("utf-8")
+    )
+    return digest.hexdigest()
+
+
+def record_population_sample(
+    conn: sqlite3.Connection,
+    features: dict[str, float],
+    source: str,
+    contributor: str | None = None,
+) -> None:
+    """Store one consented sample. Derived features only."""
     import time
 
     conn.execute(
-        "INSERT INTO population_samples (source, features_json, created_at) VALUES (?, ?, ?)",
-        (source, json.dumps(features, separators=(",", ":")), time.time()),
+        "INSERT INTO population_samples (source, contributor, features_json, created_at) "
+        "VALUES (?, ?, ?, ?)",
+        (source, contributor, json.dumps(features, separators=(",", ":")), time.time()),
     )
+
+
+def load_population_samples(
+    conn: sqlite3.Connection, exclude_contributor: str | None = None
+) -> list[dict[str, float]]:
+    """Fetch stored samples, optionally excluding one contributor.
+
+    A user must not help define the population they are being compared
+    against: their own samples would pull the notion of 'typical' toward them
+    and weaken exactly the discrimination the prior exists to provide.
+    """
+    if exclude_contributor:
+        rows = conn.execute(
+            "SELECT features_json FROM population_samples "
+            "WHERE contributor IS NULL OR contributor != ?",
+            (exclude_contributor,),
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT features_json FROM population_samples").fetchall()
+
+    return [json.loads(row["features_json"]) for row in rows]
 
 
 def load_population_prior(
-    conn: sqlite3.Connection, exclude_user_features: list[dict[str, float]] | None = None
+    conn: sqlite3.Connection, exclude_contributor: str | None = None
 ) -> PopulationPrior:
-    """Build the prior from stored samples.
-
-    `exclude_user_features` drops the enrolling user's own contributions. A
-    user must not help define the population they are being compared against:
-    that would shrink their apparent distance from 'typical' and weaken exactly
-    the discrimination the prior is there to provide.
-    """
-    rows = conn.execute("SELECT features_json FROM population_samples").fetchall()
-    samples = [json.loads(row["features_json"]) for row in rows]
-
-    if exclude_user_features:
-        own = {_fingerprint_key(f) for f in exclude_user_features}
-        samples = [s for s in samples if _fingerprint_key(s) not in own]
-
-    return fit_population_prior(samples)
-
-
-def _fingerprint_key(features: dict[str, float]) -> str:
-    """Cheap identity for a feature dict, for exclusion by value."""
-    return json.dumps(
-        {k: round(v, 6) for k, v in sorted(features.items())}, separators=(",", ":")
-    )
+    return fit_population_prior(load_population_samples(conn, exclude_contributor))

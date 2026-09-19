@@ -63,11 +63,16 @@ class Challenge:
     phrase: str
     username_claim: str
     purpose: str
+    issued_at: float
     expires_at: float
 
     @property
     def expires_in(self) -> int:
         return max(0, int(round(self.expires_at - time.time())))
+
+    def age_seconds(self, now: float | None = None) -> float:
+        """How long ago this challenge was handed out."""
+        return (now if now is not None else time.time()) - self.issued_at
 
 
 CAPITALISED_WORDS = 2  # see below
@@ -131,6 +136,7 @@ def create_challenge(
         phrase=phrase,
         username_claim=username_claim.lower(),
         purpose=purpose,
+        issued_at=now,
         expires_at=expires_at,
     )
 
@@ -160,7 +166,7 @@ def consume_challenge(
     ).rowcount
 
     row = conn.execute(
-        "SELECT nonce, username_claim, purpose, phrase, expires_at "
+        "SELECT nonce, username_claim, purpose, phrase, issued_at, expires_at "
         "FROM auth_challenges WHERE nonce = ?",
         (nonce,),
     ).fetchone()
@@ -173,6 +179,7 @@ def consume_challenge(
         phrase=row["phrase"],
         username_claim=row["username_claim"],
         purpose=row["purpose"],
+        issued_at=row["issued_at"],
         expires_at=row["expires_at"],
     )
 

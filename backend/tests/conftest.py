@@ -53,3 +53,30 @@ def client(fresh_db_path):
 
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def age_challenge(fresh_db_path):
+    """Back-date a challenge to simulate time the user spent filling the form.
+
+    The integrity check rejects a capture describing more interaction time than
+    the challenge has existed for, which is what stops a long pre-recorded
+    stream being spliced onto a freshly fetched nonce. Synthetic fixtures
+    generate their whole timeline instantly, so tests have to move the clock
+    rather than sleep for twenty seconds a piece.
+    """
+    import sqlite3
+
+    def _age(nonce: str, seconds: float) -> None:
+        conn = sqlite3.connect(fresh_db_path)
+        try:
+            conn.execute(
+                "UPDATE auth_challenges SET issued_at = issued_at - ?, "
+                "expires_at = expires_at - ? WHERE nonce = ?",
+                (seconds, seconds, nonce),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return _age
