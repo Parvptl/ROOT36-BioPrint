@@ -70,14 +70,32 @@ class Challenge:
         return max(0, int(round(self.expires_at - time.time())))
 
 
-def generate_phrase(word_count: int = PHRASE_WORD_COUNT) -> str:
-    """Build a random phrase using the CSPRNG, not `random`.
+CAPITALISED_WORDS = 2  # see below
 
-    `random.choice` is a Mersenne Twister: an observer who sees a handful of
+
+def generate_phrase(word_count: int = PHRASE_WORD_COUNT) -> str:
+    """Build a random phrase using the CSPRNG, not the `random` module.
+
+    random.choice is a Mersenne Twister: an observer who collects a handful of
     phrases could predict subsequent ones and pre-record matching behaviour.
-    `secrets.choice` removes that path.
+    secrets.choice removes that path.
+
+    A couple of words are capitalised at random positions. That is not
+    decoration: it is the only place the user presses Shift in a field whose
+    contents are public. Shift-hand preference (left vs right) is a strong,
+    stable trait, and sourcing it here means we never have to infer it from
+    password keystrokes, where knowing which positions were shifted would leak
+    the password's capitalisation pattern.
     """
-    return " ".join(secrets.choice(_WORDS) for _ in range(word_count))
+    words = [secrets.choice(_WORDS) for _ in range(word_count)]
+    # Capitalise distinct positions, never the first word only, so the shift
+    # presses land mid-phrase where they are a deliberate act rather than habit.
+    positions = set()
+    while len(positions) < min(CAPITALISED_WORDS, word_count):
+        positions.add(secrets.randbelow(word_count))
+    for i in positions:
+        words[i] = words[i].capitalize()
+    return " ".join(words)
 
 
 def normalise_phrase(text: str) -> str:

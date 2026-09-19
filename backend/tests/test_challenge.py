@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from app.auth.challenge import (
+    CAPITALISED_WORDS,
     PHRASE_WORD_COUNT,
     consume_challenge,
     create_challenge,
@@ -23,9 +24,27 @@ def test_phrases_are_fresh_each_time():
     assert all(len(p.split()) == PHRASE_WORD_COUNT for p in phrases)
 
 
-def test_phrase_is_plain_lowercase_words():
+def test_phrase_is_plain_alphabetic_words():
     for _ in range(50):
-        assert all(w.isalpha() and w.islower() for w in generate_phrase().split())
+        assert all(w.isalpha() for w in generate_phrase().split())
+
+
+def test_phrase_capitalises_words_so_shift_is_observed_outside_the_password():
+    """Shift-hand preference must be measurable from public text only."""
+    for _ in range(50):
+        words = generate_phrase().split()
+        capitalised = [w for w in words if w[0].isupper()]
+        assert len(capitalised) == CAPITALISED_WORDS
+
+
+def test_capitalisation_position_varies_between_phrases():
+    seen = set()
+    for _ in range(100):
+        words = generate_phrase().split()
+        seen.add(tuple(i for i, w in enumerate(words) if w[0].isupper()))
+    # A fixed capitalisation pattern would let an attacker pre-train the shift
+    # timing for known positions.
+    assert len(seen) > 5
 
 
 def test_normalise_phrase_tolerates_typing_artefacts():
