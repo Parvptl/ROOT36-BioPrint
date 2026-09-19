@@ -24,12 +24,22 @@ Three independent judgements, fused into one verdict:
 | Question | Component |
 |---|---|
 | Does this credential match? | Argon2id password check |
-| Does this person behave like the enrolled user? | Behavioural fingerprint |
+| Does this person behave like the enrolled user? | Statistical fingerprint **+ ML anomaly detector** |
 | Is this a person at all? | Automation detector |
 | Did this capture answer *this* challenge, just now? | Integrity / replay checks |
 
 The outcome is `ALLOW` or `BLOCK`. There is no OTP, no email, no SMS and no
 second channel anywhere in the codebase.
+
+Identity is answered by two independent layers. A **statistical fingerprint**
+(medians, MADs, per-feature deviation) and a **per-user Isolation Forest** that
+scores how unusual a capture is relative to that user's enrolled behaviour.
+Both are computed on every login; both are reported separately.
+
+> **The ML layer ships in shadow mode.** It is trained, scored, logged and
+> displayed, but weighted **0.0** in the decision — because we measured it and
+> blending it in makes authentication *worse* (§6.1). That is a result, not an
+> unfinished integration. One environment variable enables it.
 
 ## 3. Threat model
 
@@ -59,9 +69,16 @@ Both are probabilistic.
 │         ▼                                                                     │
 │  server-side feature extraction  ──▶  raw events discarded here               │
 │         ▼                                                                     │
-│   ┌──────────┬────────────┬───────────┐                                       │
-│   │ Identity │ Automation │ Integrity │                                       │
-│   └──────────┴────────────┴───────────┘                                       │
+│   ┌─────────────────────────────┬────────────┬───────────┐                    │
+│   │          IDENTITY           │ Automation │ Integrity │                    │
+│   │  ┌───────────┬───────────┐  │            │           │                    │
+│   │  │Statistical│ ML anomaly│  │            │           │                    │
+│   │  │median/MAD │ Isolation │  │            │           │                    │
+│   │  │           │  Forest   │  │            │           │                    │
+│   │  └─────┬─────┴─────┬─────┘  │            │           │                    │
+│   │        └──► blend ◄┘        │            │           │                    │
+│   │       w_stat=1.0 w_ml=0.0   │            │           │                    │
+│   └─────────────────────────────┴────────────┴───────────┘                    │
 │         ▼                                                                     │
 │     risk engine  ──▶  ALLOW / BLOCK  + reason codes                           │
 └───────────────────────────────────────────────────────────────────────────────┘
@@ -166,6 +183,133 @@ genuine data the threshold comes from genuine spread and the profile **records
 that false acceptance is unmeasured**. With neither it reports `fallback_prior`
 rather than implying a calibration happened.
 
+When the ML blend is enabled, the threshold is **re-derived from the blended
+score** by the same procedure, and `threshold_source` gains a `+ml` suffix.
+Blending without recalibrating would silently move the operating point.
+
+## 6.1 ML anomaly layer
+
+Full write-up: **[docs/ml-layer.md](docs/ml-layer.md)**.
+
+### Why an anomaly detector, not a classifier
+
+Enrollment observes exactly one class. We see how the account owner behaves and
+nothing else — there is no labelled set of impostors for this user and never
+will be at enrollment time. A supervised classifier has nothing to learn from.
+The only question the data can answer is *how unusual is this relative to what
+we have seen from this person*, which is one-class anomaly detection.
+
+**What Isolation Forest does not do:** it does not identify an attacker. It
+scores how easily a point is isolated from a training distribution. *Unusual*
+is not *malicious* — a genuine user on a new keyboard is also unusual. That is
+why it is an input to a risk engine, never a verdict.
+
+### Windowing — making a training set out of 8 logins
+
+One login produces one feature vector. Eight rounds in 27 dimensions is not a
+training set; fitting on that fits the noise.
+
+Each capture is cut into **overlapping windows of 20 consecutive phrase
+keystrokes, stride 10**, and each window goes through *the existing feature
+extractor* — there is no second feature implementation.
+
+| | |
+|---|---|
+| Windows per round | ~4 |
+| Training vectors per user | **~32** |
+| Features at window scale | **13** |
+
+Cut over **keystrokes, not time**: a fixed time window holds fifty presses
+during fast typing and four during a pause, making vectors non-comparable. Cut
+over the **phrase field only**, so no password material reaches the model. Two
+features are excluded when windowed because their meaning is session-level
+(`int_time_to_first_interaction` becomes the window's own offset, teaching the
+model our windowing rather than the user).
+
+Enrollment discards raw events by design, so windows are computed **at
+submission time** while events are still in memory and stored as derived
+features. The privacy property is unchanged.
+
+### Model, scoring and persistence
+
+`IsolationForest`, 150 trees, `contamination="auto"`, `random_state=20260919`
+(fixed, so identical data gives an identical model), `n_jobs=1`.
+
+Preprocessing uses a **fixed, versioned schema** decided at training and
+replayed exactly at inference — the failure this prevents is silent, not loud.
+Missing features are imputed to the **training centre, not zero**; zero is an
+extreme value for most of these features and would manufacture an anomaly out
+of a missing measurement.
+
+`score_samples` returns higher-is-more-normal in a meaningless narrow band, so
+both the inversion and the scale are fixed together:
+
+```
+anomaly = clamp( (train_centre − raw) / (3 × train_scale), 0, 1 )
+```
+
+Distance *below* the training centre in robust scale units of the training
+distribution. 0 = typical, 1 = three robust sigmas out. The saturation point
+matches the statistical layer's, so the two scores share a scale and a blend is
+meaningful. Per-window scores aggregate by **median**.
+
+Models persist to `data/models/<user_id>/` as `behavioral_model.joblib` plus a
+readable `metadata.json` (model type, versions, feature names, training window
+count, timestamp, configuration — **no user id, username or secrets**). A
+corrupt, missing or version-mismatched model **degrades to the statistical
+layer** rather than raising into the authentication path.
+
+### Measured result: it does not help
+
+`evaluation/hybrid_comparison.py` — 25 enrollments, 200 genuine + 200 impostor
+attempts, identical data, equal-error (threshold-free):
+
+| configuration | EER |
+|---|---|
+| **statistical only (1.0 / 0.0)** | **7.8%** |
+| hybrid (0.8 / 0.2) | 9.5% |
+| hybrid (0.6 / 0.4) | 12.0% |
+| ML only (0.0 / 1.0) | 15.5% |
+
+**Every weight including ML is worse, monotonically.** Alternative fusions do
+not rescue it: `max` 16.2%, `min` 6.9%, statistical alone 6.2% on that run.
+
+**Why it loses:**
+
+| | statistical | ML |
+|---|---|---|
+| raw gap (impostor − genuine median) | 0.355 | **0.679** |
+| genuine spread (IQR) | **0.062** | 0.298 |
+
+A *larger* raw separation but **5× the spread on genuine users** — noisy on
+precisely the class we have most data about. Worse, it correlates with the
+statistical score (+0.37 genuine, +0.79 impostor) and **fails on the same
+cases**: genuine users the statistical layer falsely rejects score 0.395 on ML
+(also "anomalous"); impostors it falsely accepts score 0.247 (also "fine"). It
+compounds errors rather than catching them. An independent signal would look
+uncorrelated and be right where the other is wrong.
+
+Worth recording: **the windowing was the right idea.** An earlier benchmark fit
+Isolation Forest on 8 session-level vectors at 17.5% EER; windowing to ~32
+improves it to 15.5%. It just does not close a gap that large.
+
+### What ships
+
+`BIOPRINT_ML_WEIGHT` defaults to **0.0**. Shipping 0.6/0.4 would knowingly ship
+a **54% relative increase in equal error**. To blend it in anyway:
+
+```bash
+BIOPRINT_STATISTICAL_WEIGHT=0.6
+BIOPRINT_ML_WEIGHT=0.4
+```
+
+To disable the layer entirely: `BIOPRINT_ML_ENABLED=false`.
+
+The model is fitted **only at enrollment**, never from a login attempt, so
+nothing an attacker submits can move the baseline. The ML score is withheld
+from the login response for the same reason the identity score is — it would be
+a tuning oracle — and appears only in the audit trail and operator console.
+
 ## 7. Automation detection
 
 A separate component with its own score and reason codes, because *"this is not
@@ -219,13 +363,28 @@ automation ≥ 0.50       → BLOCK (automation)         ← its own verdict
 coverage < 0.45         → BLOCK (insufficient signal) ← declines to guess
 identity > threshold′   → BLOCK (behavioural mismatch)
 otherwise               → ALLOW
-    where threshold′ = threshold × (1 − 0.5 × automation)
+
+    identity   = w_stat × statistical + w_ml × ml_anomaly   (w_ml = 0.0)
+    threshold′ = threshold × (1 − 0.5 × automation)
 ```
 
 Integrity and automation are categorical — a reused nonce is not 40% of a
 replay. Below the automation gate the two signals genuinely fuse: a somewhat
 machine-like attempt is held to a proportionally tighter identity threshold, so
 no single number decides a login.
+
+The four scores stay **separate concepts** and are reported independently:
+
+| | question |
+|---|---|
+| `statistical_identity_score` | does this match the enrolled profile? |
+| `ml_anomaly_score` | is this unusual for this user? |
+| `automation_score` | is this a person? |
+| `integrity_score` | can this evidence be trusted? |
+
+ML is never folded into automation or integrity. At the shipped weight the
+identity score equals the statistical score exactly, so the decision path is
+identical to the system before the ML layer existed.
 
 ## 10. Security and privacy
 
@@ -278,6 +437,18 @@ behaves on controlled input; they say nothing about real people.
 **The genuine and impostor distributions overlap.** There is no threshold giving
 zero of both. Reported honestly because it is the actual behaviour of the system.
 
+Adding the ML layer was measured, not assumed. Same data, same attempts,
+equal-error:
+
+| configuration | EER |
+|---|---|
+| **statistical only** | **7.8%** |
+| hybrid (0.6 / 0.4) | 12.0% |
+| ML only | 15.5% |
+
+Every weight including ML is worse. It ships in shadow mode at weight 0.0; see
+§6.1 and [docs/ml-layer.md](docs/ml-layer.md) for the diagnosis.
+
 Enrollment round count, chosen by measurement rather than feel:
 
 | rounds | FRR | equal-error |
@@ -306,17 +477,23 @@ in this README is a real-human accuracy figure, and none will be invented.
 
 | stage | p50 | p95 |
 |---|---|---|
-| Credential (Argon2id) | 49.70 ms | 57.70 ms |
-| Validation + integrity | 0.47 ms | 0.65 ms |
-| Feature extraction | 0.72 ms | 0.89 ms |
-| Identity scoring | 0.04 ms | 0.06 ms |
-| Automation detection | 0.85 ms | 1.00 ms |
-| Persistence | 0.07 ms | 0.13 ms |
-| **Behavioural analysis** | **2.09 ms** | **2.42 ms** |
-| **End to end** | **52.43 ms** | **60.08 ms** |
+| Credential (Argon2id) | 55.29 ms | 74.71 ms |
+| Validation + integrity | 0.49 ms | 1.02 ms |
+| Feature extraction | 0.78 ms | 1.30 ms |
+| Identity scoring (statistical) | 0.05 ms | 0.12 ms |
+| Automation detection | 0.87 ms | 1.30 ms |
+| **ML anomaly (windowing + forest)** | **6.25 ms** | **7.64 ms** |
+| Persistence | 0.11 ms | 0.14 ms |
+| **Behavioural analysis** | **8.53 ms** | **10.91 ms** |
+| **End to end** | **64.98 ms** | **83.89 ms** |
 
-Argon2id is **95%** of the total, and is a deliberate cost. Network time is not
+Argon2id is **85%** of the total, and is a deliberate cost. Network time is not
 included and is not claimed.
+
+Model loading was **18 ms per login** before caching — unpickling the forest on
+every request dwarfed the 4 ms of actual inference. Models are cached in memory
+keyed on the artefact's mtime, so a retrain is picked up on the next login
+rather than serving a stale forest. Cached load: **0.05 ms**.
 
 ## 12. Installation
 
@@ -389,6 +566,8 @@ cd backend
 # Synthetic mechanism validation
 ./.venv/Scripts/python.exe ../evaluation/reliability_sweep.py
 ./.venv/Scripts/python.exe ../evaluation/diagnose_content_effect.py
+./.venv/Scripts/python.exe ../evaluation/baseline_comparison.py
+./.venv/Scripts/python.exe ../evaluation/hybrid_comparison.py   # statistical vs ML
 ./.venv/Scripts/python.exe ../evaluation/benchmark_latency.py
 
 # Labelled evaluation against a running server — the only real-accuracy path
@@ -413,11 +592,16 @@ To collect real data:
 cd backend && ./.venv/Scripts/python.exe -m pytest
 ```
 
-**140 tests.** Ordering is randomised (`pytest-randomly`) and warnings are errors.
+**176 tests.** Ordering is randomised (`pytest-randomly`) and warnings are errors.
 Covers feature semantics, profile fitting, scale floors, saturation, calibration
 paths, automation detection including false-positive cases, all four demo
 scenarios, replay and nonce reuse, the oracle-removal guarantees, and assertions
 that no raw events or plaintext passwords reach the database.
+
+33 of those cover the ML layer: windowing, schema versioning, train/inference
+mismatch, persistence round-trip, corrupt and version-mismatched artefacts,
+cache invalidation on retrain, determinism, graceful fallback when data is
+insufficient, and weight renormalisation.
 
 ## 16. Limitations
 
@@ -433,6 +617,10 @@ that no raw events or plaintext passwords reach the database.
 - **Rate limiting is in-process**; a multi-worker deployment needs shared state.
 - **No adaptive profiles yet** — behaviour drifts over time and the profile does
   not follow it.
+- **The ML layer does not currently earn its place.** It is trained and scored
+  but weighted 0.0, because blending it measurably worsens separation on
+  synthetic data. That conclusion may not hold on real humans and should be
+  re-measured once real captures exist.
 - Small samples throughout. Every rate is reported with its *n*.
 
 ## 17. Future work
@@ -440,7 +628,9 @@ that no raw events or plaintext passwords reach the database.
 Adaptive profile updates on high-confidence accepts; a larger population prior;
 per-modality thresholds; a Chrome MV3 packaging of the same collector; keystroke
 features conditioned on digraph identity once enough data exists to estimate
-them.
+them. For the ML layer: re-measure on real captures, and try an estimator whose
+errors are less correlated with the statistical layer's — the current one adds
+little because it fails on the same attempts.
 
 ## 18. Project structure
 
@@ -452,11 +642,12 @@ backend/
     behavioral/
       features/    registry + keyboard / pointer / interaction extractors
       fingerprint/ population prior, profile fitting, scoring, calibration
+      ml/          windowing, preprocessing, Isolation Forest, persistence, blend
       bot_detection/
       scoring/     reason codes, integrity, risk engine
     db/            schema, repository
     models/        event contract, API schemas
-  tests/           140 tests
+  tests/           176 tests
 frontend/
   src/
     collector/     the behavioural sensor (TypeScript)
@@ -464,10 +655,15 @@ frontend/
 evaluation/
   reliability_sweep.py       synthetic FRR/FAR across many enrollments
   diagnose_content_effect.py content-vs-behaviour variance decomposition
+  baseline_comparison.py     statistical model vs sklearn one-class baselines
+  hybrid_comparison.py       statistical vs ML vs hybrid, weight sweep
   benchmark_latency.py       staged latency measurement
   run_evaluation.py          labelled real evaluation
   captures/                  real CDP automation capture
 docs/
+  ml-layer.md                design, measurement and shadow-mode rationale
+  report.md                  the required technical report
+  threat-model, judge-assessment
 ```
 
 ## 19. Authorship

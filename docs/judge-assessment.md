@@ -49,7 +49,7 @@ It also caught a **prior fix that was actively harmful**: a threshold widened
 until tests passed accepted 30 of 30 moderately-different impostors, and only
 looked correct because the test fixture impostor was a caricature.
 
-**Evidence.** 143 tests, randomised order, seven consecutive clean runs.
+**Evidence.** 176 tests, randomised order, five consecutive clean runs.
 Both flaky tests were fixed by asserting the property the system actually claims
 rather than by loosening them.
 
@@ -141,11 +141,22 @@ Writing this assessment is what caught the gap: the README already *claimed*
 the harness fitted these baselines, and it did not. The claim was made true
 rather than softened.
 
-**Weakness.** A judge expecting deep learning still sees medians and MADs. The
-answer is now a table rather than an argument, but it is a table on synthetic
-typists.
+A per-user **Isolation Forest** anomaly layer was then built on top, with
+keystroke windowing to turn 8 logins into ~32 training vectors, versioned
+preprocessing, per-user persistence and a configurable blend. It was measured
+against the statistical layer and **it loses** (7.8% against 12.0% EER blended),
+so it ships in shadow mode: trained, scored and displayed, weighted 0.0.
 
-**Could still do.** Nothing. This criterion is now evidenced.
+**Weakness.** A judge expecting deep learning still sees medians and MADs, and
+the headline ML result is negative.
+
+**Strength, if framed correctly.** "We built it, measured it, it did not help,
+so it runs in shadow mode and here is the diagnosis" is a stronger engineering
+answer than shipping an unmeasured model. The diagnosis is specific: the
+anomaly score correlates with the statistical score and fails on the same
+attempts. See docs/ml-layer.md.
+
+**Could still do.** Nothing. This criterion is now evidenced both ways.
 
 ---
 
@@ -154,11 +165,12 @@ typists.
 
 **Demonstrates.** Measured, staged, and reported with the awkward part visible.
 `evaluation/benchmark_latency.py`, 60 decisions, warm-up discarded:
-**behavioural analysis p50 2.09 ms / p95 2.42 ms**; end-to-end p50 52.4 / p95
-60.1 ms, of which **Argon2id is 95%**.
+**behavioural analysis p50 8.53 ms / p95 10.91 ms** (of which the ML stage is
+6.25 ms); end-to-end p50 64.98 / p95 83.89 ms, of which **Argon2id is 85%**.
 
 An earlier unexplained 162 ms p95 was chased down to warm-up cost rather than
-quoted or ignored.
+quoted or ignored. Adding the ML layer surfaced an 18 ms per-login model load
+that was found by profiling and fixed with an mtime-keyed cache.
 
 **Weakness.** Network time is excluded and stated as excluded. Over real HTTP the
 first cold request reads ~120 ms, which is why the runbook has a warm-up step —
