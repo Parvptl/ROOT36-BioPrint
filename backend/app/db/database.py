@@ -20,6 +20,19 @@ from app.config import settings
 
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
+# Lets tests and the offline evaluation harness point at their own database
+# without mutating the frozen Settings object.
+_db_path_override: Path | None = None
+
+
+def set_db_path_override(path: Path | None) -> None:
+    global _db_path_override
+    _db_path_override = path
+
+
+def resolve_db_path(db_path: Path | None = None) -> Path:
+    return db_path or _db_path_override or settings.db_path
+
 
 def _connect(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10.0)
@@ -29,18 +42,27 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path | None = None) -> None:
-    """Create the database file and apply the schema. Idempotent."""
-    target = db_path or settings.db_path
+    """Create the database file and apply the schema. Idempotent.
+
+    Note: `with sqlite3.connect(...)` commits but does NOT close the handle.
+    On Windows a leaked handle keeps a lock on the file, so the close is
+    explicit here.
+    """
+    target = resolve_db_path(db_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
-    with _connect(target) as conn:
+    conn = _connect(target)
+    try:
         conn.executescript(schema)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 @contextmanager
 def get_connection(db_path: Path | None = None) -> Iterator[sqlite3.Connection]:
     """Yield a connection, committing on success and rolling back on error."""
-    target = db_path or settings.db_path
+    target = resolve_db_path(db_path)
     conn = _connect(target)
     try:
         yield conn

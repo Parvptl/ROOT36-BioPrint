@@ -53,14 +53,17 @@ CREATE TABLE IF NOT EXISTS population_samples (
 
 -- Single-use, expiring behavioural challenges. `consumed_at` is what makes a
 -- replayed nonce fail on the second use.
+-- `username_claim` rather than a user_id foreign key: a challenge is handed out
+-- for whatever username was typed, existing or not, so this endpoint cannot be
+-- used to enumerate which accounts are registered.
 CREATE TABLE IF NOT EXISTS auth_challenges (
-    nonce        TEXT PRIMARY KEY,
-    user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    purpose      TEXT    NOT NULL,               -- 'login' | 'enrollment'
-    phrase       TEXT    NOT NULL,               -- randomised prompt the client must type
-    issued_at    REAL    NOT NULL,
-    expires_at   REAL    NOT NULL,
-    consumed_at  REAL                            -- NULL until first use
+    nonce           TEXT PRIMARY KEY,
+    username_claim  TEXT    NOT NULL,
+    purpose         TEXT    NOT NULL,            -- 'login' | 'enrollment'
+    phrase          TEXT    NOT NULL,            -- randomised prompt the client must type
+    issued_at       REAL    NOT NULL,
+    expires_at      REAL    NOT NULL,
+    consumed_at     REAL                         -- NULL until first use
 );
 
 CREATE INDEX IF NOT EXISTS idx_challenges_expiry ON auth_challenges(expires_at);
