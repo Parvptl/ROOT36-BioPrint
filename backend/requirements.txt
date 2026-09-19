@@ -1,0 +1,21 @@
+# --- Web layer ---
+fastapi==0.115.6          # API framework: async, typed, automatic request validation
+uvicorn[standard]==0.34.0 # ASGI server used to run the app locally
+pydantic==2.10.4          # request/response schemas; rejects malformed event streams at the edge
+
+# --- Credentials ---
+argon2-cffi==23.1.0       # Argon2id password hashing (memory-hard, resists GPU cracking)
+
+# --- Behavioural processing ---
+numpy==2.2.1              # vectorised feature extraction; keeps per-attempt latency low
+
+# --- Evaluation only (not imported by the request path) ---
+scikit-learn==1.6.0       # baseline models (OneClassSVM / IsolationForest) for the
+                          # benchmark in evaluation/, so our model choice is evidenced
+
+# --- Config ---
+python-dotenv==1.0.1      # loads backend/.env so secrets stay out of source
+
+# --- Testing ---
+pytest==8.3.4
+httpx==0.28.1             # required by fastapi.testclient for integration tests
