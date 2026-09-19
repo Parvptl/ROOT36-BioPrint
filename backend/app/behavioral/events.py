@@ -94,13 +94,15 @@ class SessionView:
     untrusted_count: int = 0
     total_events: int = 0
     paste_count: int = 0
+    unmatched_keyups: int = 0
+    paste_contexts: set[str] = field(default_factory=set)
 
     def presses_in(self, *contexts: str) -> list[KeyPress]:
         wanted = set(contexts)
         return [p for p in self.presses if p.ctx in wanted]
 
 
-def _pair_presses(events) -> list[KeyPress]:
+def _pair_presses(events) -> tuple[list[KeyPress], int]:
     """Match each keydown with the keyup that released it.
 
     Keyed by physical code where available. In the password context the code is
@@ -111,6 +113,7 @@ def _pair_presses(events) -> list[KeyPress]:
     """
     pending: dict[tuple[str, str], deque] = defaultdict(deque)
     presses: list[KeyPress] = []
+    unmatched_keyups = 0
 
     for event in events:
         if event.type not in ("keydown", "keyup"):
@@ -143,11 +146,14 @@ def _pair_presses(events) -> list[KeyPress]:
                     repeat=held.repeat,
                     trusted=held.trusted and event.trusted,
                 )
-            # A keyup with no matching keydown is left unpaired here and
-            # surfaces as an ordering violation in the automation detector.
+            else:
+                # A release with nothing to release. Counted as a structural
+                # fact about the stream; the automation detector decides what
+                # it means.
+                unmatched_keyups += 1
 
     presses.sort(key=lambda p: p.down_t)
-    return presses
+    return presses, unmatched_keyups
 
 
 def _segment_pointer(
@@ -203,8 +209,9 @@ def build_session_view(session: BehaviorSessionIn) -> SessionView:
                     view.submit_t = event.t
             case "paste":
                 view.paste_count += 1
+                view.paste_contexts.add(event.ctx)
 
-    view.presses = _pair_presses(session.events)
+    view.presses, view.unmatched_keyups = _pair_presses(session.events)
     view.pointer_t = np.asarray(move_t, dtype=float)
     view.pointer_x = np.asarray(move_x, dtype=float)
     view.pointer_y = np.asarray(move_y, dtype=float)

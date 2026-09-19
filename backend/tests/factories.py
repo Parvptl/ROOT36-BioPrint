@@ -284,6 +284,33 @@ def _enter_field(
         builder.add(type="focus", ctx=to_ctx, via="programmatic")
 
 
+def events_as_dicts(session: BehaviorSessionIn) -> list[dict[str, Any]]:
+    """Plain dicts for a session's events, for tests that mutate the stream."""
+    return [event.model_dump() for event in session.events]
+
+
+def rebuild_session(
+    session: BehaviorSessionIn,
+    events: list[dict[str, Any]],
+    meta: dict[str, Any] | None = None,
+) -> BehaviorSessionIn:
+    """Revalidate a mutated event list back into a session.
+
+    Going through full validation rather than model_copy keeps mutated fixtures
+    honest: a test cannot accidentally construct a stream the real endpoint
+    would have rejected.
+    """
+    return BehaviorSessionIn.model_validate(
+        {
+            "nonce": session.nonce,
+            "phrase_typed": session.phrase_typed,
+            "started_at_ms": session.started_at_ms,
+            "events": sorted(events, key=lambda e: e["t"]),
+            "meta": meta if meta is not None else session.meta.model_dump(),
+        }
+    )
+
+
 # ----------------------------------------------------------------- attackers
 
 
@@ -378,7 +405,7 @@ def linear_pointer_session(
     detection here can only have come from the movement geometry.
     """
     session = human_session(phrase, nonce=nonce, seed=seed, use_pointer=False)
-    events = [e.model_dump() for e in session.events]
+    events = events_as_dicts(session)
 
     # Two separate straight runs, so the path features have more than one
     # segment to average over, as a real login would.
@@ -390,12 +417,4 @@ def linear_pointer_session(
             t += 10.0  # exactly 10 ms apart, exactly 8 px across: no human does this
         t += 500.0  # pause long enough to end the segment
 
-    return BehaviorSessionIn.model_validate(
-        {
-            "nonce": nonce,
-            "phrase_typed": session.phrase_typed,
-            "started_at_ms": session.started_at_ms,
-            "events": sorted(events, key=lambda e: e["t"]),
-            "meta": session.meta.model_dump(),
-        }
-    )
+    return rebuild_session(session, events)
