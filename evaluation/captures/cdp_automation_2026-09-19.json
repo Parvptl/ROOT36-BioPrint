@@ -1,0 +1,42 @@
+{
+  "_provenance": {
+    "collected": "2026-09-19T15:15+05:30",
+    "source": "Chrome DevTools Protocol driven browser automation against the live BioPrint enrollment page at http://localhost:5173/enroll",
+    "why_this_matters": "This is a real capture from a real browser-automation tool, not a hand-written fixture. It is the strongest single piece of evidence for two design decisions. First, every event carries trusted=true, because CDP input is genuine browser input as far as the page is concerned. Second, navigator.webdriver reports false, so the automation is not self-declaring. A detector built on either flag would have passed this attempt. It was caught on event-ordering forensics instead: the tool fills fields with bulk text insertion, producing input events with no keydown before them, and it teleports the pointer between click targets with no intervening movement.",
+    "observed_outcome": "Rejected at enrollment with the message 'That round looked automated rather than typed.'",
+    "note": "The nonce in this capture is spent and the phrase belongs to an expired challenge, so this file cannot be replayed against a live server. It is retained purely as detector test input."
+  },
+  "session": {
+    "nonce": "f1qOK6BV4fnt9Ayg7Tw3gJBpi0bcg_SRImKwyUSo6JE",
+    "phrase_typed": "Stellar bronze ginger Marble cotton dragon bridge",
+    "started_at_ms": 1789810841446,
+    "meta": {
+      "webdriver": false,
+      "pointer_type": "mouse",
+      "screen_w": 1536,
+      "screen_h": 960,
+      "hardware_concurrency": 16
+    },
+    "events": [
+      { "type": "focus", "t": 1, "trusted": true, "ctx": "username", "via": "programmatic" },
+      { "type": "pointerdown", "t": 27165.3, "trusted": true, "ctx": "username", "x": 450, "y": 364, "button": 0 },
+      { "type": "pointerup", "t": 27165.9, "trusted": true, "ctx": "username", "x": 450, "y": 364, "button": 0 },
+      { "type": "input", "t": 27180.5, "trusted": true, "ctx": "username", "length": 4 },
+      { "type": "pointerdown", "t": 27213.2, "trusted": true, "ctx": "password", "x": 450, "y": 449, "button": 0 },
+      { "type": "blur", "t": 27213.3, "trusted": true, "ctx": "username", "via": "unknown" },
+      { "type": "focus", "t": 27213.7, "trusted": true, "ctx": "password", "via": "pointer" },
+      { "type": "pointerup", "t": 27214.2, "trusted": true, "ctx": "password", "x": 450, "y": 449, "button": 0 },
+      { "type": "input", "t": 27227.5, "trusted": true, "ctx": "password", "length": 17 },
+      { "type": "pointerdown", "t": 27262.9, "trusted": true, "ctx": "phrase", "x": 450, "y": 630, "button": 0 },
+      { "type": "blur", "t": 27263.0, "trusted": true, "ctx": "password", "via": "unknown" },
+      { "type": "focus", "t": 27263.3, "trusted": true, "ctx": "phrase", "via": "pointer" },
+      { "type": "pointerup", "t": 27263.5, "trusted": true, "ctx": "phrase", "x": 450, "y": 630, "button": 0 },
+      { "type": "input", "t": 27273.7, "trusted": true, "ctx": "phrase", "length": 49 },
+      { "type": "pointerdown", "t": 27309.0, "trusted": true, "ctx": "page", "x": 450, "y": 713, "button": 0 },
+      { "type": "blur", "t": 27309.6, "trusted": true, "ctx": "phrase", "via": "unknown" },
+      { "type": "focus", "t": 27309.9, "trusted": true, "ctx": "page", "via": "pointer" },
+      { "type": "pointerup", "t": 27310.3, "trusted": true, "ctx": "page", "x": 450, "y": 713, "button": 0 },
+      { "type": "submit", "t": 27310.5, "trusted": true, "ctx": "page" }
+    ]
+  }
+}

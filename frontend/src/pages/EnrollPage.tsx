@@ -42,9 +42,13 @@ export default function EnrollPage() {
   const roundsDone = progress?.sessions_captured ?? 0;
 
   const requestRound = useCallback(
-    async (user: string, pass: string) => {
+    // `keepMessage` preserves an explanation of why the previous round was
+    // rejected. Without it the message is written and then wiped by the very
+    // next request, and the user is sent back to an identical form with no
+    // idea what went wrong.
+    async (user: string, pass: string, keepMessage = false) => {
       setBusy(true);
-      setError(null);
+      if (!keepMessage) setError(null);
       try {
         const next = await api.enrollmentChallenge(user, pass);
         setChallenge(next);
@@ -96,10 +100,11 @@ export default function EnrollPage() {
       } else if (result.accepted) {
         await requestRound(username, password);
       } else {
-        // Round rejected (bad phrase, too little signal). Re-issue rather than
-        // folding a poor-quality capture into the baseline.
+        // Round rejected (bad phrase, automation, too little signal). Re-issue
+        // rather than folding a poor-quality capture into the baseline, and
+        // keep the explanation on screen through the re-issue.
         setError(result.message);
-        await requestRound(username, password);
+        await requestRound(username, password, true);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not submit this round.');
