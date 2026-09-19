@@ -53,8 +53,12 @@ w_f     = σ²_pop,f / (σ²_pop,f + scale²_f)
 score   = Σ w_f·min(z_f², 9) / Σ w_f / 9
 ```
 
-One-Class SVM, Isolation Forest and autoencoders were rejected as unestimable at
-8 samples in 27 dimensions; they would fit enrollment noise. Three elements carry
+One-Class SVM, Isolation Forest, Elliptic Envelope and Local Outlier Factor were
+fitted on identical data and all lose: equal-error 14.8% to 17.9% against
+**7.1%** for this model (30 trials, `evaluation/baseline_comparison.py`). Eight
+samples in 27 dimensions is not enough for them; they fit enrollment noise. The
+comparison favours the baselines, since missing features are filled with the
+enrollment median rather than handled as uncovered. Three elements carry
 the model: a **shrinkage floor** (a user consistent on one feature otherwise gets
 a near-zero scale and is locked out), a **discriminability weight** (uniform when
 no population data exists, because inventing a ranking from nothing is dishonest),

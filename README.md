@@ -128,10 +128,22 @@ w_f     = σ²_pop,f / (σ²_pop,f + scale²_f)    ← discriminability
 score   = Σ w_f·ρ(z_f) / Σ w_f / 9            ← in [0, 1]
 ```
 
-**Why not One-Class SVM, Isolation Forest, or an autoencoder?** Enrollment gives
-8 samples in ~27 dimensions. None of those is estimable there; they fit
-enrollment noise and produce confident nonsense. The evaluation harness fits them
-anyway so the choice stays measured rather than assumed.
+**Why not One-Class SVM or Isolation Forest?** Because we fitted them on exactly
+the same data and they lose. `evaluation/baseline_comparison.py`, 30 trials, same
+8 enrollment rounds, same attempts, identical conditions:
+
+| model | EER | FRR@EER | FAR@EER |
+|---|---|---|---|
+| **BioPrint (shrinkage robust)** | **7.1%** | 7.1% | 7.1% |
+| EllipticEnvelope | 14.8% | 15.8% | 13.8% |
+| LocalOutlierFactor | 17.3% | 17.9% | 16.7% |
+| IsolationForest | 17.5% | 17.5% | 17.5% |
+| OneClassSVM (rbf) | 17.9% | 17.9% | 17.9% |
+
+Roughly half the error rate of the best baseline. Missing features are filled
+with the enrollment median, which *favours* the baselines — they cannot express
+"not observed" the way the coverage mechanism can. Eight samples in 27 dimensions
+is simply not enough for these estimators; they fit enrollment noise.
 
 Three pieces carry the model:
 

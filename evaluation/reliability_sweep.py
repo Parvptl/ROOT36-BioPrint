@@ -28,6 +28,7 @@ if str(BACKEND) not in sys.path:
 
 import numpy as np  # noqa: E402
 
+from app.api.routes_auth import ENROLLMENT_ROUNDS  # noqa: E402
 from app.auth.challenge import generate_phrase  # noqa: E402
 from app.behavioral.features.extractor import extract_from_session  # noqa: E402
 from app.behavioral.fingerprint.calibration import build_calibrated_profile  # noqa: E402
@@ -36,7 +37,10 @@ from app.behavioral.fingerprint.scoring import score_identity  # noqa: E402
 from tests.factories import TypingStyle, human_session  # noqa: E402
 
 TRIALS = 40
-ENROLL_ROUNDS = 5
+# Imported rather than restated. A local constant here silently drifted from
+# the product once already: the baseline comparison ran at 5 rounds while the
+# shipped enrollment was 8, so it was measuring a configuration nobody uses.
+ENROLL_ROUNDS = ENROLLMENT_ROUNDS
 GENUINE_PER_TRIAL = 8
 IMPOSTOR_PER_TRIAL = 8
 
