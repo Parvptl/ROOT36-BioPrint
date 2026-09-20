@@ -204,10 +204,10 @@ export function SecurityVerdict({ decision }: { decision: Decision }) {
   const summary = blockSummary(decision);
 
   return (
-    <div className={`verdict ${allowed ? 'allow' : 'block'}`} style={{ marginBottom: 24 }}>
-      <div className="verdict-title">
+    <section className={`verdict ${allowed ? 'allow' : 'block'}`} aria-live="assertive" aria-labelledby="security-verdict-title" style={{ marginBottom: 24 }}>
+      <h1 className="verdict-title" id="security-verdict-title">
         {allowed ? 'ACCESS GRANTED' : 'ACCESS BLOCKED'}
-      </div>
+      </h1>
       <div className="verdict-msg">{subtitle(decision)}</div>
 
       <ul className="sec-layers">
@@ -240,6 +240,6 @@ export function SecurityVerdict({ decision }: { decision: Decision }) {
           <code className="reason-code">{decision.reason}</code>
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }

@@ -80,13 +80,19 @@ export class BehaviorCollector {
    * timings, or a score.
    */
   get captureActivity(): { keyboard: boolean; pointer: boolean; interaction: boolean } {
-    let keyboard = false;
-    let pointer = false;
-    let interaction = false;
+    const counts = this.captureCounts;
+    return { keyboard: counts.keyboard > 0, pointer: counts.pointer > 0, interaction: counts.interaction > 0 };
+  }
+
+  /** Privacy-safe live counts used only to make observed activity tangible in the UI. */
+  get captureCounts(): { keyboard: number; pointer: number; interaction: number } {
+    let keyboard = 0;
+    let pointer = 0;
+    let interaction = 0;
     for (const event of this.events) {
-      if (event.type === 'keydown' || event.type === 'keyup') keyboard = true;
-      if (event.type === 'pointermove' || event.type === 'pointerdown' || event.type === 'pointerup') pointer = true;
-      if (event.type === 'focus' || event.type === 'blur' || event.type === 'input' || event.type === 'submit') interaction = true;
+      if (event.type === 'keydown' || event.type === 'keyup') keyboard += 1;
+      if (event.type === 'pointermove' || event.type === 'pointerdown' || event.type === 'pointerup') pointer += 1;
+      if (event.type === 'focus' || event.type === 'blur' || event.type === 'input' || event.type === 'submit') interaction += 1;
     }
     return { keyboard, pointer, interaction };
   }
