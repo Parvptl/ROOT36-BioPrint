@@ -2,7 +2,7 @@
 
 Two audiences, deliberately separated:
 
-* `code` is machine-readable and stable — the dashboard, the evaluation
+* `code` is machine-readable and stable — the evaluation
   harness and the tests key off it.
 * `explain()` is what a blocked user sees. It says which *category* of signal
   disagreed without disclosing feature names, thresholds or score margins,
@@ -84,7 +84,7 @@ def explain(code: ReasonCode) -> str:
     return _EXPLANATIONS.get(code, "Authentication could not be completed.")
 
 
-# Short dashboard labels. Categories only — no thresholds or feature names.
+# Short labels. Categories only — no thresholds or feature names.
 _HEADLINES: dict[ReasonCode, str] = {
     ReasonCode.BEHAVIOR_MATCH: "ACCESS GRANTED",
     ReasonCode.INVALID_CREDENTIALS: "ACCESS BLOCKED",
@@ -135,7 +135,7 @@ def integrity_status(reason: ReasonCode | str, integrity_score: float | None) ->
     return "PASS"
 
 
-# Coarse severity band shown in the dashboard next to each contributing signal.
+# Coarse severity band shown next to each contributing signal.
 def band(normalised: float) -> str:
     """Map a 0..1 deviation onto LOW / MEDIUM / HIGH for display."""
     if normalised < 0.34:

@@ -188,7 +188,7 @@ login rather than serving a stale forest. Cached load: **0.05 ms**.
   layer rather than raising into the authentication path.
 - The ML score is withheld from the login response for the same reason the
   identity score is: it would be a tuning oracle. It appears only in the audit
-  trail and the key-gated operator console.
+  trail.
 
 ## Limitations
 

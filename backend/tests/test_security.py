@@ -693,39 +693,7 @@ def test_exact_scores_are_still_recorded_for_the_operator(client, age_challenge,
     assert recorded["automation_score"] is not None
 
 
-# ------------------------------------------------------- operator dashboard
 
-
-def test_dashboard_is_disabled_when_no_operator_key_is_configured(client):
-    """Closed by default. It serves exactly what the login response withholds."""
-    assert client.get("/security/dashboard").status_code == 404
-
-
-def test_dashboard_rejects_a_missing_or_wrong_operator_key(client, with_operator_key):
-    assert client.get("/security/dashboard").status_code == 401
-    assert client.get(
-        "/security/dashboard", headers={"X-Operator-Key": "wrong"}
-    ).status_code == 401
-
-
-def test_dashboard_serves_exact_scores_with_the_operator_key(
-    client, age_challenge, with_operator_key
-):
-    register(client)
-    enroll(client, age_challenge)
-    attempt_login(
-        client, age_challenge,
-        lambda p, n: human_session(p, nonce=n, style=MALLORY, seed=884,
-                                   username=USERNAME, password=PASSWORD),
-    )
-
-    response = client.get(
-        "/security/dashboard", headers={"X-Operator-Key": with_operator_key}
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["latest"]["identity_score"] is not None
-    assert body["attempts"]
 
 
 # ------------------------------------------------- bundled frontend serving

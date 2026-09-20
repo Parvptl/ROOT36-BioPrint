@@ -104,7 +104,7 @@ class LoginBehaviorIn(BaseModel):
 
 
 class SignalDetail(BaseModel):
-    """One contributing signal, shaped for the dashboard."""
+    """One contributing signal."""
 
     code: str
     label: str
@@ -135,9 +135,8 @@ class DecisionOut(BaseModel):
     attempt rather than a full gradient, and every attempt already costs a
     single-use challenge and is rate limited.
 
-    The exact numbers still exist. They are written to the audit trail and
-    served by the operator dashboard, which is key-gated. The subject of a
-    decision does not get the gradient; the operator does.
+    The exact numbers still exist. They are written to the audit trail. The
+    subject of a decision does not get the gradient; the operator does.
     Everything here is computed server-side from the raw event stream. None of
     it is accepted from the client under any circumstance.
     """
@@ -157,28 +156,6 @@ class DecisionOut(BaseModel):
     latency: LatencyBreakdown
     session_token: str | None = None
     attempt_id: int | None = None
-
-
-class AttemptLogOut(BaseModel):
-    """One audit-trail row, shaped for the security dashboard."""
-
-    attempt_id: int
-    username: str
-    decision: Literal["ALLOW", "BLOCK"]
-    reason: str
-    identity_score: float | None = None
-    statistical_identity_score: float | None = None
-    automation_score: float | None = None
-    integrity_score: float | None = None
-    coverage: float | None = None
-    latency_ms: float | None = None
-    created_at: float
-
-
-class DashboardOut(BaseModel):
-    latest: AttemptLogOut | None
-    attempts: list[AttemptLogOut]
-    demo_reset_enabled: bool
 
 
 class DemoResetOut(BaseModel):

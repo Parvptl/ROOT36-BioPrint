@@ -121,7 +121,7 @@ def main() -> None:
             print(f"             {signal['detail']}")
     print()
     print("  Note: the response carries no score and no threshold. Exact values")
-    print("  are on the operator console; the attacker is not given a gradient.")
+    print("  are on the audit trail; the attacker is not given a gradient.")
     print()
 
     sys.exit(0 if verdict["decision"] == "BLOCK" else 1)

@@ -74,6 +74,23 @@ export class BehaviorCollector {
     return this.running;
   }
 
+  /**
+   * Privacy-safe UI summary. This intentionally exposes only whether event
+   * categories have been observed—never typed values, key codes, coordinates,
+   * timings, or a score.
+   */
+  get captureActivity(): { keyboard: boolean; pointer: boolean; interaction: boolean } {
+    let keyboard = false;
+    let pointer = false;
+    let interaction = false;
+    for (const event of this.events) {
+      if (event.type === 'keydown' || event.type === 'keyup') keyboard = true;
+      if (event.type === 'pointermove' || event.type === 'pointerdown' || event.type === 'pointerup') pointer = true;
+      if (event.type === 'focus' || event.type === 'blur' || event.type === 'input' || event.type === 'submit') interaction = true;
+    }
+    return { keyboard, pointer, interaction };
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;

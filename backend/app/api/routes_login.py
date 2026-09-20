@@ -280,8 +280,7 @@ def _to_response(
         integrity_status=integrity_status(verdict.reason, verdict.integrity_score),
         # No identity score, no automation score, no threshold. See the
         # DecisionOut docstring: returning them made this endpoint a tuning
-        # oracle. The exact values go to the audit trail and the key-gated
-        # operator dashboard instead.
+        # exactly the bounds required to pass. The exact distance is retained in the audit trail instead.
         signals=[_signal(s) for s in verdict.signals],
         coverage_band=_coverage_band(verdict.coverage),
         latency=latency,

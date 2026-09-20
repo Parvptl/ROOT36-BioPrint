@@ -188,7 +188,7 @@ sensor that ships raw events and never a score, so patching the client cannot
 move the decision. The **login response is not an oracle** — an earlier version
 returned the exact identity score and threshold, which let an attacker holding a
 correct password read their distance from acceptance and hill-climb; that was
-found and removed, with the numbers moved to a key-gated operator console. The
+found and removed. The
 split between *"this is not you"* and *"this is not a person"* runs through the
 whole design.
 

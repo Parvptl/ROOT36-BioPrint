@@ -15,10 +15,7 @@ os.environ["BIOPRINT_DB_PATH"] = str(_TMP_DIR / "test.db")
 os.environ["BIOPRINT_SECRET_KEY"] = "test-only-secret-value-not-used-anywhere-else"
 os.environ["BIOPRINT_CHALLENGE_TTL_SECONDS"] = "120"
 # Pin every optional key OFF, so the suite does not inherit whatever the
-# developer happens to have in backend/.env. Setting BIOPRINT_OPERATOR_KEY
-# locally silently broke the test asserting the dashboard is closed by
-# default: the test was right, the environment was leaking.
-os.environ["BIOPRINT_OPERATOR_KEY"] = ""
+# developer happens to have in backend/.env.
 os.environ["BIOPRINT_DEMO_RESET_KEY"] = ""
 os.environ["BIOPRINT_DISABLED_FEATURES"] = ""
 
@@ -119,23 +116,4 @@ def age_challenge(fresh_db_path):
     return _age
 
 
-OPERATOR_KEY = "test-operator-key"
 
-
-@pytest.fixture
-def with_operator_key(monkeypatch):
-    """Enable the operator dashboard for one test.
-
-    Settings is a frozen dataclass, so the module global is rebound with a
-    modified copy rather than mutated. routes_ops holds `settings` as a module
-    attribute, which is what the endpoint reads.
-    """
-    from dataclasses import replace
-
-    import app.api.routes_ops as routes_ops
-    from app.config import settings
-
-    monkeypatch.setattr(
-        routes_ops, "settings", replace(settings, operator_key=OPERATOR_KEY)
-    )
-    return OPERATOR_KEY

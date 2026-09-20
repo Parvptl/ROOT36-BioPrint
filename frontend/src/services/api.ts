@@ -9,7 +9,6 @@
 import type { BehaviorSession } from '../collector';
 import type {
   Challenge,
-  Dashboard,
   Decision,
   EnrollmentProgress,
   ProfileStatus,
@@ -100,12 +99,4 @@ export const api = {
 
   profileStatus: (username: string) =>
     get<ProfileStatus>(`/auth/profile/status?username=${encodeURIComponent(username)}`),
-
-  /**
-   * Operator dashboard. Requires the operator key, because this is where the
-   * exact identity and automation scores live: the login response withholds
-   * them so it cannot be used to tune an impersonation.
-   */
-  dashboard: (operatorKey: string) =>
-    get<Dashboard>('/security/dashboard', { 'X-Operator-Key': operatorKey }),
 };

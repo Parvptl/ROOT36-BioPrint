@@ -124,7 +124,7 @@ behaviour, not a second factor.
 per-category bands, but no score and no threshold. An earlier version returned
 all three, letting an attacker with the password read their distance from
 acceptance and hill-climb. Exact values go to the audit trail and the key-gated
-operator console.
+the audit trail.
 
 ### 8–9. Evaluation and results
 

@@ -8,8 +8,7 @@
  * returns. Nothing is invented. In particular there is no confidence
  * percentage anywhere, because the backend deliberately does not return one:
  * the exact identity and automation scores are withheld from the login subject
- * so this page cannot be used to tune an impersonation, and they go to the
- * key-gated operator dashboard instead. Bands (HIGH / MEDIUM / LOW) are what
+ * so this page cannot be used to tune an impersonation. Bands (HIGH / MEDIUM / LOW) are what
  * the API actually provides, so bands are what is shown.
  */
 

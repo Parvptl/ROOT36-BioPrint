@@ -42,8 +42,6 @@ latency on screen is representative.
 
 ### 4. Open two windows
 
-- **Browser**: two tabs — `/login` and `/security` (unlock the console with
-  your `BIOPRINT_OPERATOR_KEY` now, not during the demo)
 - **Terminal**: in `backend/`, ready to run the attack scripts
 
 ### 5. Reset only if you must
@@ -196,7 +194,6 @@ failing on integrity. Then:
 | Symptom | Do this |
 |---|---|
 | Genuine login blocked | Retry, and explain the 7% FRR. Don't hide it |
-| Console won't unlock | `BIOPRINT_OPERATOR_KEY` unset or server not restarted since setting it |
 | "Cannot reach the service" | Backend down, or the bundle was served from another port. Restart the backend |
 | Attack script errors | Run from `backend/`, not the repo root |
 | Everything is wrong | `python -m app.demo_reset`, then re-enroll. **Needs ~4 min** |

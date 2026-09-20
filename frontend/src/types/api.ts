@@ -53,31 +53,6 @@ export interface Decision {
   attempt_id: number | null;
 }
 
-/** One audit-trail row. Operator-facing, so it carries the exact scores. */
-export interface AttemptLog {
-  attempt_id: number;
-  username: string;
-  decision: 'ALLOW' | 'BLOCK';
-  reason: string;
-  identity_score: number | null;
-  // The statistical fingerprint's score. A second `ml_anomaly_score` used to
-  // sit beside it from a per-user Isolation Forest; that layer is retired (see
-  // backend/app/behavioral/ml/__init__.py) and no longer produced.
-  // scored the attempt, even when its weight is 0 and it did not move the
-  // decision, so the console shows what the model thought either way.
-  statistical_identity_score: number | null;
-  automation_score: number | null;
-  integrity_score: number | null;
-  coverage: number | null;
-  latency_ms: number | null;
-  created_at: number;
-}
-
-export interface Dashboard {
-  latest: AttemptLog | null;
-  attempts: AttemptLog[];
-  demo_reset_enabled: boolean;
-}
 
 export interface ProfileStatus {
   username: string;

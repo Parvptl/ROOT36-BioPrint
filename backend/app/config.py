@@ -74,10 +74,6 @@ class Settings:
     secret_is_ephemeral: bool = False
     # Empty disables the HTTP demo-reset endpoint. The CLI reset never needs it.
     demo_reset_key: str = ""
-    # Empty disables the operator dashboard. It serves exact per-attempt
-    # identity and automation scores, which the login response withholds on
-    # purpose, so it must never default to open.
-    operator_key: str = ""
 
     # --- ML anomaly layer --------------------------------------------------
     # Where per-user Isolation Forest models are written. Backend-only; nothing
@@ -150,7 +146,6 @@ def load_settings() -> Settings:
         cors_origins=origins,
         secret_is_ephemeral=ephemeral,
         demo_reset_key=os.getenv("BIOPRINT_DEMO_RESET_KEY", "").strip(),
-        operator_key=os.getenv("BIOPRINT_OPERATOR_KEY", "").strip(),
         model_dir=_resolve_db_path(os.getenv("BIOPRINT_MODEL_DIR", "data/models")),
         ml_enabled=_env_bool("BIOPRINT_ML_ENABLED", True),
         statistical_weight=_env_float("BIOPRINT_STATISTICAL_WEIGHT", 1.0),

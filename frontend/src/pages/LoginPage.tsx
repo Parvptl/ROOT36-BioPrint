@@ -130,7 +130,7 @@ export default function LoginPage() {
         </div>
       </section>
       <div className="panel access-panel">
-      <button className="back-link" type="button" onClick={() => setShowAccess(false)}>← Intelligence overview</button>
+      <button className="back-link" type="button" onClick={() => setShowAccess(false)}>← Return</button>
       <h2 className="panel-title">Verify your identity</h2>
       <p className="panel-sub">Your interaction signature adds an invisible layer of account protection.</p>
 
@@ -218,14 +218,14 @@ function CinematicHero({ onVerify }: { onVerify: () => void }) {
       <g className="topology-nodes"><circle cx="84" cy="120" r="7"/><circle cx="260" cy="205" r="8"/><circle cx="410" cy="112" r="7"/><circle cx="607" cy="188" r="9"/><circle cx="746" cy="84" r="6"/><circle cx="300" cy="345" r="7"/><circle cx="477" cy="319" r="7"/><circle cx="659" cy="370" r="6"/></g>
       <circle className="threat-node" cx="607" cy="188" r="15" />
     </svg>
-    <header className="hero-nav"><Link className="hero-brand" to="/login"><span>⌁</span>BioPrint <i>Security Intelligence</i></Link><nav><Link to="/enroll">Enroll identity</Link><Link to="/security">Operator console</Link></nav></header>
+    <header className="hero-nav"><Link className="hero-brand" to="/login"><span>⌁</span>BioPrint <i>Security</i></Link><nav><Link to="/enroll">Enroll identity</Link></nav></header>
     <div className="hero-copy-cinematic">
       <div className="security-badge"><span className="status-dot" />Behavioural defense active</div>
       <h1 id="hero-title"><span>Know the person.</span><span>Stop <em>the intrusion.</em></span></h1>
       <p>BioPrint verifies the behavioural signature behind every authentication attempt, helping security teams identify impersonation and automation before access is granted.</p>
-      <div className="hero-actions-cinematic"><button className="metal-button metal-button--solid" onClick={onVerify}>Verify identity <span>→</span></button><Link className="metal-button metal-button--ghost" to="/security">Open security console</Link></div>
+      <div className="hero-actions-cinematic"><button className="metal-button metal-button--solid" onClick={onVerify}>Verify identity <span>→</span></button></div>
     </div>
-    <footer className="hero-capabilities"><div><b>01</b><span>Behavioural<br />authentication</span></div><div><b>02</b><span>Automation<br />detection</span></div><div><b>03</b><span>Operator audit<br />intelligence</span></div></footer>
+    <footer className="hero-capabilities"><div><b>01</b><span>Behavioural<br />authentication</span></div><div><b>02</b><span>Automation<br />detection</span></div><div><b>03</b><span>Replay<br />protection</span></div></footer>
   </section>;
 }
 
@@ -272,7 +272,7 @@ function VerdictPanel({ decision, onRetry }: { decision: Decision; onRetry: () =
           {/* Categories, not numbers. The exact identity and automation
               scores are withheld from whoever is attempting the login so this
               page cannot be used to tune an impersonation; they are served to
-              the operator dashboard instead. */}
+              the audit trail instead. */}
           <div className="metrics">
             <Metric label="Integrity" value={decision.integrity_status} />
             <Metric label="Signal coverage" value={decision.coverage_band} />

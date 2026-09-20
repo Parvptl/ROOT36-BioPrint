@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Operator console for Phase E real-human collection.
+"""Phase E real-human collection server.
 
 The collector needs one thing the server cannot know: who is actually at the
 keyboard. The operator declares it between phases with `actor`, and the

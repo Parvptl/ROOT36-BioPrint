@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PageFrame from '../components/PageFrame';
+import BehaviorCaptureStatus from '../components/BehaviorCaptureStatus';
 
 import { useBehaviorCollector } from '../hooks/useBehaviorCollector';
 import { ApiError, api } from '../services/api';
@@ -251,6 +252,8 @@ export default function EnrollPage() {
           />
         ))}
       </div>
+
+      <BehaviorCaptureStatus collector={collector} />
 
       {error ? <div className="notice warn">{error}</div> : null}
 

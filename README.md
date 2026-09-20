@@ -87,7 +87,7 @@ Both are probabilistic.
 └───────────────────────────────────────────────────────────────────────────────┘
      │                                    │
      ▼ categories only                    ▼ exact scores
-  login page                         operator console (key-gated)
+  login page
 ```
 
 The browser never computes a score. Patching the client JavaScript does not move
@@ -412,7 +412,7 @@ To disable the layer entirely: `BIOPRINT_ML_ENABLED=false`.
 The model is fitted **only at enrollment**, never from a login attempt, so
 nothing an attacker submits can move the baseline. The ML score is withheld
 from the login response for the same reason the identity score is — it would be
-a tuning oracle — and appears only in the audit trail and operator console.
+a tuning oracle — and appears only in the audit trail.
 
 ## 7. Automation detection
 
@@ -497,7 +497,6 @@ integrity PASS/FAIL, per-category signal bands and latency — but **no identity
 score, no automation score and no threshold**. An earlier version returned all
 three, which let an attacker holding a correct password read their exact distance
 from acceptance and hill-climb. The exact numbers go to the audit trail and the
-key-gated operator console instead.
 
 | Control | Implementation |
 |---|---|
@@ -632,7 +631,7 @@ cd ../backend && ./.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
 ```
 
 Open <http://127.0.0.1:8000>. The **dummy login page is at `/login`**, enrollment
-at `/enroll`, the operator console at `/security`.
+at `/enroll`.
 
 Confirm the bundle was picked up — `GET /health` reports
 `"frontend_bundled": true`.
@@ -658,9 +657,6 @@ baseline will reject the real you later.
 
 **Log in** at `/login` — username, password, and the phrase shown. The phrase is
 different every time.
-
-**Operator console** at `/security` — set `BIOPRINT_OPERATOR_KEY` in
-`backend/.env`, restart, and enter it. Disabled and returns 404 without one.
 
 ## 14. Evaluation
 
@@ -777,7 +773,7 @@ backend/
 frontend/
   src/
     collector/     the behavioural sensor (TypeScript)
-    pages/         login, enroll, security console
+    pages/         login, enroll
 evaluation/
   reliability_sweep.py       synthetic FRR/FAR across many enrollments
   diagnose_content_effect.py content-vs-behaviour variance decomposition
