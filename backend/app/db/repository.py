@@ -13,7 +13,7 @@ import json
 import sqlite3
 import time
 
-from app.behavioral.fingerprint.profile import BehaviorProfile, FeatureStat
+from app.behavioral.fingerprint.profile import BehaviorProfile, FeatureStat, Maturity
 
 CONSENT_VERSION = "2026-09-19.v1"
 
@@ -141,8 +141,8 @@ def save_profile(conn: sqlite3.Connection, user_id: int, profile: BehaviorProfil
     cursor = conn.execute(
         "INSERT INTO behavior_profiles "
         "(user_id, session_count, population_size, threshold, threshold_source, "
-        " calibration_json, version, update_count, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " calibration_json, version, update_count, created_at, updated_at, maturity) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             user_id,
             profile.session_count,
@@ -154,8 +154,10 @@ def save_profile(conn: sqlite3.Connection, user_id: int, profile: BehaviorProfil
             profile.update_count,
             now,
             now,
+            profile.maturity.value,
         ),
     )
+
     profile_id = int(cursor.lastrowid)
 
     conn.executemany(
@@ -211,6 +213,10 @@ def load_profile(conn: sqlite3.Connection, user_id: int) -> BehaviorProfile | No
     }
 
     calibration = json.loads(row["calibration_json"])
+    
+    # Backward compatibility for databases migrating to maturity column
+    maturity_val = row["maturity"] if "maturity" in row.keys() else Maturity.MATURE.value
+
     return BehaviorProfile(
         features=features,
         session_count=row["session_count"],
@@ -221,6 +227,7 @@ def load_profile(conn: sqlite3.Connection, user_id: int) -> BehaviorProfile | No
         calibration=calibration,
         version=row["version"],
         update_count=row["update_count"],
+        maturity=Maturity(maturity_val),
     )
 
 
@@ -329,7 +336,6 @@ def record_attempt(
     coverage: float | None,
     latency_ms: float,
     statistical_identity_score: float | None = None,
-    ml_anomaly_score: float | None = None,
     threshold: float | None = None,
 ) -> int:
     """Append to the decision audit trail.
@@ -346,9 +352,9 @@ def record_attempt(
     cursor = conn.execute(
         "INSERT INTO auth_attempts "
         "(user_id, username_attempt, decision, reason, reasons_json, identity_score, "
-        " statistical_identity_score, ml_anomaly_score, "
+        " statistical_identity_score, "
         " automation_score, integrity_score, coverage, threshold, latency_ms, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             user_id,
             username_attempt,
@@ -357,7 +363,6 @@ def record_attempt(
             json.dumps(reasons, separators=(",", ":")),
             identity_score,
             statistical_identity_score,
-            ml_anomaly_score,
             automation_score,
             integrity_score,
             coverage,

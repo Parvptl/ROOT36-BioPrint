@@ -15,9 +15,9 @@ from app.auth.challenge import Challenge, consume_challenge, create_challenge
 from app.auth.passwords import verify_password, waste_time_like_a_real_verify
 from app.auth.sessions import issue_session
 from app.behavioral.fingerprint.adaptation import adapt_profile, classify_confidence
-from app.behavioral.ml.training import load_model_for
 from app.behavioral.scoring.reasons import ReasonCode, explain, headline, integrity_status
 from app.behavioral.scoring.risk_engine import RiskDecision, Signal, decide
+from app import evaluation_capture
 from app.db import repository
 from app.db.database import db_dependency
 from app.models.schemas import (
@@ -138,16 +138,24 @@ def login_behavior(
     assert challenge is not None
 
     # --- behavioural analysis ----------------------------------------------
-    # Inference only; the model is never updated from a login attempt.
-    model = load_model_for(user["id"])
-    result = run_pipeline(payload.session, challenge, profile, model)
+    result = run_pipeline(payload.session, challenge, profile)
     verdict = decide(
         profile=profile,
         identity=result.identity,
         automation=result.automation,
         integrity=result.integrity,
         features=result.features,
-        hybrid=result.hybrid,
+    )
+
+    # Evaluation-only, no-op unless BIOPRINT_EVALUATION_MODE is set. Placed
+    # after the verdict is computed but recorded independently of it: the label
+    # comes from the operator's declaration of who is typing, never from
+    # whether the attempt was accepted.
+    evaluation_capture.capture(
+        role=evaluation_capture.ROLE_LOGIN,
+        claimed_username=username,
+        features=result.features.as_dict(),
+        coverage=result.features.coverage,
     )
 
     persist_started = time.perf_counter()
@@ -160,7 +168,6 @@ def login_behavior(
         reasons=[s.code for s in verdict.signals],
         identity_score=verdict.identity_score,
         statistical_identity_score=verdict.statistical_identity_score,
-        ml_anomaly_score=verdict.ml_anomaly_score,
         automation_score=verdict.automation_score,
         integrity_score=verdict.integrity_score,
         coverage=verdict.coverage,
@@ -181,7 +188,6 @@ def login_behavior(
         automation_ms=result.latency.automation_ms,
         credential_ms=credential_ms,
         persistence_ms=persist_ms,
-        ml_inference_ms=result.latency.ml_inference_ms,
     )
 
     log.info(
@@ -209,6 +215,37 @@ def login_behavior(
     adapted, adaptation = adapt_profile(profile, result.features.as_dict(), confidence)
     if adaptation.applied:
         repository.save_profile(conn, user["id"], adapted)
+        
+        if adapted.maturity != "MATURE":
+            repository.add_enrollment_session(
+                conn, user["id"], result.features.as_dict(), result.features.coverage
+            )
+            captured = repository.count_enrollment_sessions(conn, user["id"])
+            if captured >= 8:
+                from app.behavioral.fingerprint.calibration import build_calibrated_profile
+                from app.behavioral.fingerprint.population import load_population_prior, load_population_samples, contributor_tag
+                from dataclasses import replace
+
+                sessions = repository.load_enrollment_sessions(conn, user["id"])
+                tag = contributor_tag(user["id"])
+                prior = load_population_prior(conn, exclude_contributor=tag)
+                population_samples = load_population_samples(conn, exclude_contributor=tag)
+                
+                # An Isolation Forest used to be trained here and could
+                # replace the threshold. Retired: with ml_weight at 0.0 the
+                # recalibration returned None anyway, so the statistical
+                # threshold was always the one that shipped. Removing it takes
+                # eight model fits off the graduation login.
+                mature_profile = build_calibrated_profile(sessions, prior, population_samples)
+
+                mature_profile = replace(
+                    mature_profile, 
+                    update_count=adapted.update_count, 
+                    version=adapted.version + 1
+                )
+                repository.save_profile(conn, user["id"], mature_profile)
+                repository.clear_enrollment_sessions(conn, user["id"])
+                repository.clear_enrollment_windows(conn, user["id"])
     repository.record_profile_update(
         conn,
         user_id=user["id"],

@@ -24,22 +24,27 @@ Three independent judgements, fused into one verdict:
 | Question | Component |
 |---|---|
 | Does this credential match? | Argon2id password check |
-| Does this person behave like the enrolled user? | Statistical fingerprint **+ ML anomaly detector** |
+| Does this person behave like the enrolled user? | Personalised statistical fingerprint |
 | Is this a person at all? | Automation detector |
 | Did this capture answer *this* challenge, just now? | Integrity / replay checks |
 
 The outcome is `ALLOW` or `BLOCK`. There is no OTP, no email, no SMS and no
 second channel anywhere in the codebase.
 
-Identity is answered by two independent layers. A **statistical fingerprint**
-(medians, MADs, per-feature deviation) and a **per-user Isolation Forest** that
-scores how unusual a capture is relative to that user's enrolled behaviour.
-Both are computed on every login; both are reported separately.
+Identity is answered by one layer: a **personalised statistical fingerprint**
+(medians, MADs, per-feature deviation against the enrolled user's own profile).
 
-> **The ML layer ships in shadow mode.** It is trained, scored, logged and
-> displayed, but weighted **0.0** in the decision — because we measured it and
-> blending it in makes authentication *worse* (§6.1). That is a result, not an
-> unfinished integration. One environment variable enables it.
+> **A per-user Isolation Forest was built, measured and retired.** It is not
+> part of the authentication pipeline. It answered "is this behaviour unusual
+> for people in general?" when the system needs "is this the enrolled user?",
+> it measured worse at every blend weight, and a 60-scenario A/B showed it
+> could not change a single verdict while costing ~5.6 ms of every login. See
+> §6.1 and `backend/app/behavioral/ml/__init__.py`.
+
+The **Aalto corpus is a population prior, not an identity model.** It supplies
+one thing: how much humans in general vary on each keyboard feature, used to
+scale a personal profile. No participant identity is ever learned, and nothing
+is trained on it.
 
 ## 3. Threat model
 
@@ -71,13 +76,11 @@ Both are probabilistic.
 │         ▼                                                                     │
 │   ┌─────────────────────────────┬────────────┬───────────┐                    │
 │   │          IDENTITY           │ Automation │ Integrity │                    │
-│   │  ┌───────────┬───────────┐  │            │           │                    │
-│   │  │Statistical│ ML anomaly│  │            │           │                    │
-│   │  │median/MAD │ Isolation │  │            │           │                    │
-│   │  │           │  Forest   │  │            │           │                    │
-│   │  └─────┬─────┴─────┬─────┘  │            │           │                    │
-│   │        └──► blend ◄┘        │            │           │                    │
-│   │       w_stat=1.0 w_ml=0.0   │            │           │                    │
+│   │   personalised statistical  │  "is this  │ "is this  │                    │
+│   │   fingerprint: median/MAD   │  a human   │  capture  │                    │
+│   │   deviation from THIS       │  at all?"  │  fresh?"  │                    │
+│   │   user's enrolled profile   │            │           │                    │
+│   │   "is this YOU?"            │            │           │                    │
 │   └─────────────────────────────┴────────────┴───────────┘                    │
 │         ▼                                                                     │
 │     risk engine  ──▶  ALLOW / BLOCK  + reason codes                           │
@@ -90,6 +93,37 @@ Both are probabilistic.
 The browser never computes a score. Patching the client JavaScript does not move
 the authentication outcome, because the server recomputes everything from the
 raw event stream.
+
+### The two things that must not be confused
+
+```
+  Aalto corpus                       The user
+  168,593 participants               2 enrollment captures
+        │                                  │
+        ▼                                  ▼
+  population variability            personal centre
+  "how much do people differ        "what does THIS
+   on each feature?"                 person do?"
+        │                                  │
+        └──────────────┬───────────────────┘
+                       ▼
+              personalised profile
+                       │
+                       ▼
+          COLD_START / WARMING  ──►  genuine high-confidence
+                       │             logins adapt the profile
+                       ▼                      │
+                    MATURE  ◄─────────────────┘
+```
+
+**Aalto supplies the scale, never the identity.** It is a lookup of per-feature
+population spread. No participant is ever learned, no classifier is trained on
+it, and it cannot recognise anyone. The centre — the part that says who you are
+— comes only from the account's own captures.
+
+The **cumulative enrollment anchor** bounds how far adaptation can move that
+centre from where enrollment put it, so a run of wrongly-accepted sessions
+cannot walk a profile onto an attacker (§9).
 
 ## 5. Behavioural signals
 
@@ -174,6 +208,57 @@ Three pieces carry the model:
 - **Saturation** — a single anomalous axis (borrowed mouse, sore wrist) cannot
   outvote every other feature combined.
 
+### Enrollment: two captures
+
+**The product asks for two natural interactions, not eight.** Eight dedicated
+rounds is about two minutes of typing before anyone has logged in once, which
+is real abandonment. The shortest defensible enrollment was measured rather
+than guessed — `evaluation/enrollment_size_ablation.py`, 120 generated typists,
+1200 genuine and 1200 impostor attempts per condition, the real Aalto prior held
+fixed, thresholds calibrated on 60 users and reported on 60 disjoint held-out
+users:
+
+| captures | ROC-AUC | EER | FRR @ matched 10% FAR budget | FAR |
+|---|---|---|---|---|
+| 1 | 0.9758 | 8.50% | 9.67% | 9.83% |
+| **2** | **0.9845** | **6.17%** | **6.50%** | **8.83%** |
+| 8 *(research)* | 0.9977 | 2.08% | 0.00% | 10.00% |
+
+Two captures beat one on **both** axes, at every budget swept (2, 5, 10, 15%) —
+dominance rather than a trade-off. That is why the product asks for two.
+
+Eight remains substantially stronger than either, which is the honest shape of
+this: two captures is a usable starting point, not a mature profile. It is why
+the cold-start threshold is tighter than a calibrated one, and why adaptation
+graduates the profile as genuine logins arrive. The 8-round path is preserved
+as the research baseline and is still reachable.
+
+**How a two-capture profile is fitted.** The centre is the median of the two
+observations; the scale still comes from the population prior. A dispersion
+estimated from two points is not a dispersion — the MAD of two nearby draws
+collapses toward zero and would make ordinary variation score many scale units
+out. So the centre is personal from the first day and the spread is borrowed
+until there is enough evidence to replace it (`profile.fit_early_profile`).
+
+**Cold-start threshold.** 0.14, tightened from 0.20. The old value was chosen
+for the single-capture distribution and measured ~28% false acceptance: a fresh
+account admitting a quarter of strangers who hold the password is not an
+operating point. Recalibrated against a 10% false-acceptance budget on disjoint
+users across three seeds (derived cuts 0.129 / 0.143 / 0.140):
+
+| threshold | FRR | FAR |
+|---|---|---|
+| 0.20 | 0.2% | 34.8% |
+| **0.14** | **4.6%** | **11.9%** |
+
+It costs roughly one retry in twenty during a state that ends when the profile
+matures, and there is no account lockout. The coupling was measured too: HIGH
+confidence is defined relative to the threshold, so tightening it also slows
+maturation — median 7 genuine logins to graduate instead of 6, p90 of 11, and
+**0 of 60 profiles failed to mature** (`evaluation/maturation_speed.py`).
+
+Generated typists throughout. Not a claim about real-human accuracy.
+
 ### Threshold calibration
 
 Derived, not picked. Leave-one-session-out over enrollment rounds gives genuine
@@ -187,7 +272,7 @@ When the ML blend is enabled, the threshold is **re-derived from the blended
 score** by the same procedure, and `threshold_source` gains a `+ml` suffix.
 Blending without recalibrating would silently move the operating point.
 
-## 6.1 ML anomaly layer
+## 6.1 ML anomaly layer — BUILT, MEASURED, RETIRED
 
 Full write-up: **[docs/ml-layer.md](docs/ml-layer.md)**.
 
@@ -198,6 +283,25 @@ nothing else — there is no labelled set of impostors for this user and never
 will be at enrollment time. A supervised classifier has nothing to learn from.
 The only question the data can answer is *how unusual is this relative to what
 we have seen from this person*, which is one-class anomaly detection.
+
+> **Retired from production.** Everything below is the record of an experiment
+> that produced a negative result, kept because the result is the useful part.
+> The component is not in the login path. Do not reintroduce it.
+>
+> Three findings retired it:
+> 1. **Wrong question.** Anomaly detection asks "is this unusual?"; authentication
+>    needs "is this you?" A genuine user having an odd day is anomalous but
+>    authentic; an impostor sitting in the population's dense region is
+>    unremarkable but wrong.
+> 2. **Measured worse, monotonically** — every blend weight including the ML term
+>    scored worse than excluding it (table below). It shipped at weight 0.0.
+> 3. **Provably inert.** `evaluation/ml_independence.py` ran 60 scenarios —
+>    enrollment, genuine, human impostor, scripted bot, value-injection bot,
+>    wrong password, nonce reuse, stale capture, adaptation trail, final profile
+>    state — at both 2- and 8-capture enrollment, with the model enabled and
+>    bypassed. **Zero differences.** A component that cannot affect the outcome
+>    is not a security layer; it is latency (~5.6 ms p50, 72% of behavioural
+>    analysis time).
 
 **What Isolation Forest does not do:** it does not identify an attacker. It
 scores how easily a point is isolated from a training distribution. *Unusual*
@@ -446,7 +550,7 @@ equal-error:
 | hybrid (0.6 / 0.4) | 12.0% |
 | ML only | 15.5% |
 
-Every weight including ML is worse. It ships in shadow mode at weight 0.0; see
+Every weight including ML is worse. The layer is retired, not shipped; see
 §6.1 and [docs/ml-layer.md](docs/ml-layer.md) for the diagnosis.
 
 Enrollment round count, chosen by measurement rather than feel:
@@ -581,7 +685,8 @@ five observations**.
 
 To collect real data:
 
-1. **Enroll** yourself through the UI (8 rounds).
+1. **Enroll** yourself through the UI (2 captures; the 8-round research
+   baseline is still available by requesting `rounds: 8`).
 2. **Genuine** — log in ~10 times, behaving normally.
 3. **Impostor** — a *different person* logs in with your correct password, ~10 times.
 4. **Bot / replay** — the harness runs these automatically.
@@ -639,8 +744,6 @@ insufficient, and weight renormalisation.
   logging in with a mouse shifts them; coverage and weighting limit the damage
   but do not remove it.
 - **Rate limiting is in-process**; a multi-worker deployment needs shared state.
-- **No adaptive profiles yet** — behaviour drifts over time and the profile does
-  not follow it.
 - **The ML layer does not currently earn its place.** It is trained and scored
   but weighted 0.0, because blending it measurably worsens separation on
   synthetic data. That conclusion may not hold on real humans and should be
@@ -649,12 +752,11 @@ insufficient, and weight renormalisation.
 
 ## 17. Future work
 
-Adaptive profile updates on high-confidence accepts; a larger population prior;
-per-modality thresholds; a Chrome MV3 packaging of the same collector; keystroke
-features conditioned on digraph identity once enough data exists to estimate
-them. For the ML layer: re-measure on real captures, and try an estimator whose
-errors are less correlated with the statistical layer's — the current one adds
-little because it fails on the same attempts.
+A larger population prior; per-modality thresholds; a Chrome MV3 packaging of the
+same collector; keystroke features conditioned on digraph identity once enough
+data exists to estimate them. For the ML layer: re-measure on real captures, and
+try an estimator whose errors are less correlated with the statistical layer's —
+the current one adds little because it fails on the same attempts.
 
 ## 18. Project structure
 
@@ -666,7 +768,7 @@ backend/
     behavioral/
       features/    registry + keyboard / pointer / interaction extractors
       fingerprint/ population prior, profile fitting, scoring, calibration
-      ml/          windowing, preprocessing, Isolation Forest, persistence, blend
+      ml/          RETIRED Isolation Forest experiment (not in the login path)
       bot_detection/
       scoring/     reason codes, integrity, risk engine
     db/            schema, repository

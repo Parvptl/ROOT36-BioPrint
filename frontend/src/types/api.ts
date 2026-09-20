@@ -30,6 +30,11 @@ export interface LatencyBreakdown {
   extraction_ms: number;
   identity_ms: number;
   automation_ms: number;
+  // These three are returned by the backend and were missing here, so the UI
+  // could not tell how much of `total_ms` was the password hash. It is almost
+  // all of it: Argon2id at 64 MiB is ~100% of a typical decision.
+  credential_ms: number;
+  persistence_ms: number;
 }
 
 export interface Decision {
@@ -55,11 +60,12 @@ export interface AttemptLog {
   decision: 'ALLOW' | 'BLOCK';
   reason: string;
   identity_score: number | null;
-  // The blend's components. ml_anomaly_score is present whenever a model
+  // The statistical fingerprint's score. A second `ml_anomaly_score` used to
+  // sit beside it from a per-user Isolation Forest; that layer is retired (see
+  // backend/app/behavioral/ml/__init__.py) and no longer produced.
   // scored the attempt, even when its weight is 0 and it did not move the
   // decision, so the console shows what the model thought either way.
   statistical_identity_score: number | null;
-  ml_anomaly_score: number | null;
   automation_score: number | null;
   integrity_score: number | null;
   coverage: number | null;

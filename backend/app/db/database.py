@@ -66,6 +66,7 @@ def init_db(db_path: Path | None = None) -> None:
 # while quietly missing it.
 _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("auth_attempts", "threshold", "REAL"),
+    ("behavior_profiles", "maturity", "TEXT NOT NULL DEFAULT 'MATURE'"),
 )
 
 

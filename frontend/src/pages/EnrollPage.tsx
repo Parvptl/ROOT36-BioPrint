@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import PageFrame from '../components/PageFrame';
 
 import { useBehaviorCollector } from '../hooks/useBehaviorCollector';
 import { ApiError, api } from '../services/api';
@@ -38,7 +39,7 @@ export default function EnrollPage() {
 
   const usernameFieldRef = useRef<HTMLInputElement | null>(null);
 
-  const roundsTotal = progress?.sessions_required ?? challenge?.rounds_total ?? 5;
+  const roundsTotal = progress?.sessions_required ?? challenge?.rounds_total ?? 2;
   const roundsDone = progress?.sessions_captured ?? 0;
 
   const requestRound = useCallback(
@@ -118,28 +119,48 @@ export default function EnrollPage() {
 
   if (stage === 'done') {
     return (
-      <div className="panel">
-        <h1 className="panel-title">Behavioural profile created</h1>
-        <p className="panel-sub">
+      <PageFrame eyebrow="Identity enrollment complete" title="Behavioural profile created" description="Your baseline is ready for protected authentication.">
+      <div className="panel" style={{ textAlign: 'center' }}>
+        <div className="enroll-done-icon" aria-hidden="true">
+          <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+            <circle cx="28" cy="28" r="27" stroke="var(--allow)" strokeWidth="1.5" strokeDasharray="4 3" opacity=".4" />
+            <circle cx="28" cy="28" r="20" stroke="var(--allow)" strokeWidth="2" opacity=".8" />
+            <path d="M20 28l6 6 10-12" stroke="var(--allow)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          </svg>
+        </div>
+        <p className="panel-sub" style={{ textAlign: 'center', maxWidth: '420px', margin: '16px auto 20px' }}>
           BioPrint has built a baseline from {roundsDone} enrollment rounds for{' '}
-          <strong>{username}</strong>. Future logins are compared against it.
+          <strong>{username}</strong>. Future logins are compared against this profile.
         </p>
         {progress?.quality ? <QualityReadout quality={progress.quality} /> : null}
-        <Link to="/login" className="muted-link">
-          Go to the login page &rarr;
+        <Link to="/login" className="ghost" style={{ display: 'inline-flex', marginTop: '8px' }}>
+          Continue to login →
         </Link>
       </div>
+      </PageFrame>
     );
   }
 
   if (stage === 'register') {
     return (
+      <PageFrame eyebrow="Identity enrollment · step 1" title="Create your protected identity" description="Set up an account, then provide a short behavioural baseline for future access verification.">
+      <div className="enroll-context">
+        <div className="enroll-context-item">
+          <div className="enroll-context-num">01</div>
+          <div><strong>Register</strong><span>Create credentials</span></div>
+        </div>
+        <div className="enroll-context-divider" />
+        <div className="enroll-context-item dim">
+          <div className="enroll-context-num">02</div>
+          <div><strong>Capture</strong><span>Type enrollment phrases</span></div>
+        </div>
+        <div className="enroll-context-divider" />
+        <div className="enroll-context-item dim">
+          <div className="enroll-context-num">03</div>
+          <div><strong>Protected</strong><span>Profile is active</span></div>
+        </div>
+      </div>
       <div className="panel">
-        <h1 className="panel-title">Create an account</h1>
-        <p className="panel-sub">
-          You will set a password, then complete a few short rounds so BioPrint can
-          learn how you interact with the page.
-        </p>
 
         {error ? <div className="notice error">{error}</div> : null}
 
@@ -186,29 +207,47 @@ export default function EnrollPage() {
           </div>
 
           <button className="primary" type="submit" disabled={busy || !consent}>
-            {busy ? 'Creating account...' : 'Create account and begin'}
+            {busy ? 'Creating account…' : 'Create account and begin'}
           </button>
         </form>
       </div>
+      </PageFrame>
     );
   }
 
+  // Rounds stage
+  const pct = roundsTotal > 0 ? Math.round((roundsDone / roundsTotal) * 100) : 0;
+
   return (
+    <PageFrame eyebrow="Behavioural baseline in progress" title={`Enrollment round ${Math.min(roundsDone + 1, roundsTotal)} of ${roundsTotal}`} description="Use the form naturally. BioPrint measures interaction patterns, not the content of your password.">
+    <div className="enroll-context">
+      <div className="enroll-context-item done">
+        <div className="enroll-context-num">01</div>
+        <div><strong>Register</strong><span>Complete</span></div>
+      </div>
+      <div className="enroll-context-divider active" />
+      <div className="enroll-context-item active">
+        <div className="enroll-context-num">02</div>
+        <div><strong>Capture</strong><span>{roundsDone}/{roundsTotal} rounds</span></div>
+      </div>
+      <div className="enroll-context-divider" />
+      <div className="enroll-context-item dim">
+        <div className="enroll-context-num">03</div>
+        <div><strong>Protected</strong><span>Awaiting baseline</span></div>
+      </div>
+    </div>
     <div className="panel">
-      <h1 className="panel-title">
-        Enrollment round {Math.min(roundsDone + 1, roundsTotal)} of {roundsTotal}
-      </h1>
-      <p className="panel-sub">
-        Fill this in the way you normally would. Do not try to be careful or
-        consistent &mdash; BioPrint is learning your ordinary behaviour, and an
-        artificially neat baseline would reject the real you later.
-      </p>
+
+      <div className="enroll-progress-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Enrollment ${pct}% complete`}>
+        <div className="enroll-progress-fill" style={{ width: `${pct}%` }} />
+      </div>
 
       <div className="rounds">
         {Array.from({ length: roundsTotal }, (_, i) => (
           <div
             key={i}
             className={`round-pip ${i < roundsDone ? 'done' : i === roundsDone ? 'active' : ''}`}
+            title={i < roundsDone ? `Round ${i+1}: captured` : i === roundsDone ? `Round ${i+1}: current` : `Round ${i+1}: pending`}
           />
         ))}
       </div>
@@ -246,7 +285,7 @@ export default function EnrollPage() {
 
         <div className="phrase-card">
           <div className="phrase-label">Type this phrase</div>
-          <div className="phrase-text">{challenge?.phrase ?? '...'}</div>
+          <div className="phrase-text">{challenge?.phrase ?? '…'}</div>
         </div>
 
         <div className="field">
@@ -267,10 +306,11 @@ export default function EnrollPage() {
         </div>
 
         <button className="primary" type="submit" disabled={busy || !challenge}>
-          {busy ? 'Recording...' : 'Submit round'}
+          {busy ? 'Recording…' : 'Submit round'}
         </button>
       </form>
     </div>
+    </PageFrame>
   );
 }
 

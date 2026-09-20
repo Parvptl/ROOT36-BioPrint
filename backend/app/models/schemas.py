@@ -57,12 +57,22 @@ class EnrollmentStartIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=1, max_length=256)
+    rounds: int | None = Field(
+        default=None,
+        description="Enrollment captures to collect. None uses the product default; "
+                    "8 selects the research baseline.",
+    )
 
 
 class EnrollmentSubmitIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     username: str = Field(min_length=3, max_length=32)
     session: BehaviorSessionIn
+    rounds: int | None = Field(
+        default=None,
+        description="Enrollment captures to collect. None uses the product default; "
+                    "8 selects the research baseline.",
+    )
 
 
 class EnrollmentProgressOut(BaseModel):
@@ -112,7 +122,6 @@ class LatencyBreakdown(BaseModel):
     automation_ms: float
     credential_ms: float = 0.0
     persistence_ms: float = 0.0
-    ml_inference_ms: float = 0.0
 
 
 class DecisionOut(BaseModel):
@@ -159,7 +168,6 @@ class AttemptLogOut(BaseModel):
     reason: str
     identity_score: float | None = None
     statistical_identity_score: float | None = None
-    ml_anomaly_score: float | None = None
     automation_score: float | None = None
     integrity_score: float | None = None
     coverage: float | None = None
@@ -179,12 +187,35 @@ class DemoResetOut(BaseModel):
 
 
 class ProfileStatusOut(BaseModel):
+    """Enrollment progress, for the account's own UI.
+
+    This endpoint is UNAUTHENTICATED — it answers for any username, and answers
+    identically for unknown and unenrolled accounts so it cannot be used to
+    enumerate registrations.
+
+    It therefore must not carry the exact decision threshold. DecisionOut
+    withholds that number on purpose, because an attacker holding a correct
+    password who can read their precise deviation and the exact bar to clear
+    can hill-climb toward it. Serving the same number from an unauthenticated
+    GET would have handed back exactly what the login response refuses to give.
+    The exact value still goes to the audit trail and the key-gated operator
+    dashboard.
+
+    `threshold_source` stays: it names the method, not the operating point, and
+    a user is entitled to know whether their profile was calibrated or is still
+    on a cold-start default.
+    """
+
     username: str
     enrolled: bool
     sessions_captured: int
     sessions_required: int
     feature_count: int | None = None
     population_size: int | None = None
-    threshold: float | None = None
     threshold_source: str | None = None
     calibration_note: str | None = None
+    # Coarse lifecycle state, for the UI. COLD_START | WARMING | ESTABLISHED |
+    # MATURE. Reveals no gradient: it says how personalised the profile is, not
+    # where the bar sits.
+    maturity: str | None = None
+    profile_version: int | None = None

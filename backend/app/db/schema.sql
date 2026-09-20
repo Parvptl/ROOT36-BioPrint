@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS behavior_profiles (
     version            INTEGER NOT NULL DEFAULT 1,
     update_count       INTEGER NOT NULL DEFAULT 0,
     created_at         REAL    NOT NULL,
-    updated_at         REAL    NOT NULL
+    updated_at         REAL    NOT NULL,
+    maturity           TEXT    NOT NULL DEFAULT 'MATURE'
 );
 
 CREATE TABLE IF NOT EXISTS behavior_profile_features (

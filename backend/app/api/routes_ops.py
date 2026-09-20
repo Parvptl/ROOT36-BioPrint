@@ -31,7 +31,6 @@ def _row_to_attempt(row: sqlite3.Row) -> AttemptLogOut:
         reason=row["reason"],
         identity_score=row["identity_score"],
         statistical_identity_score=row["statistical_identity_score"],
-        ml_anomaly_score=row["ml_anomaly_score"],
         automation_score=row["automation_score"],
         integrity_score=row["integrity_score"],
         coverage=row["coverage"],

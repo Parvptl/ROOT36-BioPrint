@@ -166,4 +166,21 @@ def load_population_samples(
 def load_population_prior(
     conn: sqlite3.Connection, exclude_contributor: str | None = None
 ) -> PopulationPrior:
-    return fit_population_prior(load_population_samples(conn, exclude_contributor))
+    db_prior = fit_population_prior(load_population_samples(conn, exclude_contributor))
+    
+    from app.behavioral.fingerprint.aalto_prior import aalto_population_prior
+    aalto_prior = aalto_population_prior()
+    
+    if not aalto_prior:
+        return db_prior
+        
+    merged_scales = dict(aalto_prior.scales)
+    # The Aalto prior provides empirical scales for keyboard features.
+    # The database prior provides empirical scales for pointer/interaction features (if any).
+    for name, scale in db_prior.scales.items():
+        if name not in merged_scales:
+            merged_scales[name] = scale
+            
+    # Sample count from Aalto is dominant.
+    total_samples = max(aalto_prior.sample_count, db_prior.sample_count)
+    return PopulationPrior(scales=merged_scales, sample_count=total_samples)

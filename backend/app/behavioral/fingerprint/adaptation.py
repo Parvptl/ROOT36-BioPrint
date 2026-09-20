@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.behavioral.fingerprint.profile import BehaviorProfile, FeatureStat
+from app.behavioral.fingerprint.profile import BehaviorProfile, FeatureStat, Maturity
 
 # --- confidence tiers ------------------------------------------------------
 
@@ -203,23 +203,30 @@ def adapt_profile(
             updated[name] = stat
             continue
 
-        long_track = stat.median_long if stat.median_long else stat.median
-        recent_track = stat.median_recent if stat.median_recent else stat.median
+        long_track = stat.median_long if stat.median_long is not None else stat.median
+        recent_track = stat.median_recent if stat.median_recent is not None else stat.median
 
         new_long = (1 - ALPHA_LONG) * long_track + ALPHA_LONG * observed
         new_recent = (1 - ALPHA_RECENT) * recent_track + ALPHA_RECENT * observed
 
         blended = LAMBDA_LONG * new_long + (1 - LAMBDA_LONG) * new_recent
 
+        # Tighter clamp during COLD_START and WARMING
+        effective_max_drift = MAX_DRIFT_PER_UPDATE
+        effective_total_drift = MAX_TOTAL_DRIFT
+        if profile.maturity in (Maturity.COLD_START, Maturity.WARMING):
+            effective_max_drift *= 0.5
+            effective_total_drift *= 0.5
+
         # Two clamps, both in units of the feature's own scale.
         # Per-step: no single session lurches the profile.
-        step_limit = MAX_DRIFT_PER_UPDATE * stat.scale
+        step_limit = effective_max_drift * stat.scale
         delta = max(-step_limit, min(step_limit, blended - stat.median))
         new_median = stat.median + delta
 
         # Cumulative: no sequence of sessions walks it away from enrollment.
-        anchor = stat.median_enrolled if stat.median_enrolled else stat.median
-        total_limit = MAX_TOTAL_DRIFT * stat.scale
+        anchor = stat.median_enrolled if stat.median_enrolled is not None else stat.median
+        total_limit = effective_total_drift * stat.scale
         new_median = max(
             anchor - total_limit, min(anchor + total_limit, new_median)
         )
@@ -244,6 +251,18 @@ def adapt_profile(
             coverage=stat.coverage,
         )
 
+    # Maturity state progression
+    total_sessions = profile.update_count + 1 + profile.session_count
+    next_maturity = profile.maturity
+    
+    # We do NOT progress to MATURE here. Graduation to MATURE requires a full 
+    # recalibration event which is triggered separately once 8 sessions are collected.
+    if profile.maturity != Maturity.MATURE:
+        if total_sessions >= 5:
+            next_maturity = Maturity.ESTABLISHED
+        elif total_sessions >= 2:
+            next_maturity = Maturity.WARMING
+        
     next_version = profile.version + 1
     adapted = BehaviorProfile(
         features=updated,
@@ -253,6 +272,7 @@ def adapt_profile(
         threshold=profile.threshold,
         threshold_source=profile.threshold_source,
         calibration=profile.calibration,
+        maturity=next_maturity,
         version=next_version,
         update_count=profile.update_count + 1,
     )

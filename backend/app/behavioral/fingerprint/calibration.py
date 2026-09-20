@@ -24,7 +24,7 @@ import numpy as np
 
 from app.behavioral import stats
 from app.behavioral.fingerprint.population import PopulationPrior
-from app.behavioral.fingerprint.profile import BehaviorProfile, fit_profile
+from app.behavioral.fingerprint.profile import BehaviorProfile, fit_profile, Maturity
 from app.behavioral.fingerprint.scoring import score_identity
 
 # Enough impostor scores to attempt a real sweep. Below this, a threshold
@@ -284,4 +284,61 @@ def build_calibrated_profile(
         threshold=result.threshold,
         threshold_source=result.source,
         calibration=result.as_json(),
+        maturity=Maturity.MATURE,
+    )
+
+import os
+
+# Cold-start operating point, for one- and two-capture profiles.
+#
+# These profiles have no leave-one-out folds to calibrate against, so the
+# threshold is static. It was previously 0.20, chosen for the single-capture
+# distribution, and measured at roughly 1% false rejection and 28% false
+# acceptance. Twenty-eight percent is not an operating point; it means a
+# freshly enrolled account admits more than a quarter of strangers who hold the
+# password.
+#
+# Recalibrated in evaluation/enrollment_size_ablation.py against a 10% false-
+# acceptance budget, on 60 users, reported on 60 disjoint held-out users, three
+# seeds. The derived cut was 0.129 / 0.143 / 0.140; 0.14 sits inside that range.
+#
+# Held-out effect at two captures, mean of three seeds:
+#     threshold 0.20  ->  false rejection  0.2%   false acceptance 34.8%
+#     threshold 0.14  ->                   4.6%                    11.9%
+#
+# This TIGHTENS the gate. It costs genuine users roughly one retry in twenty
+# during a transitional state that ends as soon as the profile matures, and
+# there is no account lockout, so a retry is cheap. Cutting cold-start false
+# acceptance threefold is worth that.
+#
+# Generated typists, so the number is a calibrated starting point rather than a
+# measured real-world operating point. Override with
+# BIOPRINT_COLD_START_THRESHOLD.
+COLD_START_THRESHOLD = 0.14
+
+
+def cold_start_threshold(threshold: float = None) -> CalibrationResult:
+    """The static threshold for a one- or two-capture profile.
+
+    With one or two observations there is no empirical dispersion to calibrate
+    against, so leave-one-out is unavailable and the cut is fixed. See
+    COLD_START_THRESHOLD for how the value was derived.
+    """
+    if threshold is None:
+        threshold = float(
+            os.environ.get("BIOPRINT_COLD_START_THRESHOLD", str(COLD_START_THRESHOLD))
+        )
+
+    return CalibrationResult(
+        threshold=threshold,
+        source="cold_start_prior",
+        genuine_scores=[],
+        impostor_scores=[],
+        note=(
+            f"Static cold-start threshold {threshold}. One or two captures give a "
+            f"personal centre but no dispersion estimate, so the scale comes from "
+            f"the population prior and the cut is fixed rather than calibrated "
+            f"per user. Adaptation personalises this as genuine logins arrive."
+        ),
+        metrics={"loo_false_rejection_rate": None, "population_false_acceptance_rate": None}
     )

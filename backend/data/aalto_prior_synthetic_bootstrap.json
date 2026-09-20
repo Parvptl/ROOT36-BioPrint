@@ -1,0 +1,179 @@
+{
+  "meta": {
+    "source": "bootstrap_synthetic",
+    "n_users": 500,
+    "n_features": 16,
+    "generated_at": "2026-09-19T21:22:19Z",
+    "citation": "Dhakal, Feit, Kristensson, Oulasvirta. Observations on Typing from 136 Million Keystrokes. CHI 2018.",
+    "dataset_url": "https://userinterfaces.aalto.fi/136Mkeystrokes/",
+    "note": "Bootstrap prior from 500 synthetic typists with diverse parameters. NOT derived from real Aalto data. Provides per-feature scales which are strictly better than the single RELATIVE_SPREAD=0.35 constant. Replace by running precompute_aalto_prior.py with real Aalto data.",
+    "limitations": [
+      "Aalto keycode 16 does not distinguish ShiftLeft from ShiftRight. kbd_shift_right_ratio cannot be computed and is excluded from the prior.",
+      "Pointer features (7) not available — Aalto has no mouse data.",
+      "Interaction features (4) not available — Aalto has no form events.",
+      "Aalto captured desktop typing, not browser form-filling."
+    ]
+  },
+  "features": {
+    "kbd_backspace_latency_median": {
+      "population_median": 495.42,
+      "population_mad": 65.19375,
+      "population_scale": 96.656254,
+      "p10": 401.17495,
+      "p25": 430.67225,
+      "p75": 563.01,
+      "p90": 604.3663,
+      "n_users": 403
+    },
+    "kbd_backspace_rate": {
+      "population_median": 0.046154,
+      "population_mad": 0.02631,
+      "population_scale": 0.039007,
+      "p10": 0.0,
+      "p25": 0.015873,
+      "p75": 0.072464,
+      "p90": 0.085714,
+      "n_users": 500
+    },
+    "kbd_burst_fraction": {
+      "population_median": 0.0,
+      "population_mad": 0.0,
+      "population_scale": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.015873,
+      "p90": 0.064622,
+      "n_users": 500
+    },
+    "kbd_dwell_left_median": {
+      "population_median": 106.451,
+      "population_mad": 32.47375,
+      "population_scale": 48.145582,
+      "p10": 57.71805,
+      "p25": 73.647,
+      "p75": 138.59875,
+      "p90": 158.85265,
+      "n_users": 500
+    },
+    "kbd_dwell_mad": {
+      "population_median": 17.7695,
+      "population_mad": 6.6325,
+      "population_scale": 9.833345,
+      "p10": 8.7853,
+      "p25": 12.704,
+      "p75": 27.2525,
+      "p90": 35.15765,
+      "n_users": 500
+    },
+    "kbd_dwell_median": {
+      "population_median": 105.03325,
+      "population_mad": 32.13325,
+      "population_scale": 47.640756,
+      "p10": 57.5399,
+      "p25": 73.872,
+      "p75": 138.0795,
+      "p90": 158.41325,
+      "n_users": 500
+    },
+    "kbd_dwell_right_median": {
+      "population_median": 106.1615,
+      "population_mad": 31.9305,
+      "population_scale": 47.340159,
+      "p10": 57.29675,
+      "p25": 74.2105,
+      "p75": 137.697125,
+      "p90": 158.4356,
+      "n_users": 500
+    },
+    "kbd_flight_iqr": {
+      "population_median": 113.833625,
+      "population_mad": 44.266875,
+      "population_scale": 65.630069,
+      "p10": 49.195,
+      "p25": 75.541375,
+      "p75": 170.8695,
+      "p90": 222.71535,
+      "n_users": 500
+    },
+    "kbd_flight_median": {
+      "population_median": 125.081,
+      "population_mad": 65.425,
+      "population_scale": 96.999105,
+      "p10": 0.0,
+      "p25": 51.3275,
+      "p75": 185.9425,
+      "p90": 242.7948,
+      "n_users": 500
+    },
+    "kbd_flight_negative_frac": {
+      "population_median": 0.0,
+      "population_mad": 0.0,
+      "population_scale": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.04918,
+      "p90": 0.142857,
+      "n_users": 500
+    },
+    "kbd_logiki_mad": {
+      "population_median": 0.243994,
+      "population_mad": 0.065151,
+      "population_scale": 0.096592,
+      "p10": 0.148705,
+      "p25": 0.177905,
+      "p75": 0.306789,
+      "p90": 0.358891,
+      "n_users": 500
+    },
+    "kbd_logiki_median": {
+      "population_median": 5.455354,
+      "population_mad": 0.262408,
+      "population_scale": 0.389047,
+      "p10": 4.931929,
+      "p25": 5.138421,
+      "p75": 5.683829,
+      "p90": 5.834938,
+      "n_users": 500
+    },
+    "kbd_pause_rate": {
+      "population_median": 12.698413,
+      "population_mad": 4.365079,
+      "population_scale": 6.471667,
+      "p10": 4.918033,
+      "p25": 8.196721,
+      "p75": 16.393443,
+      "p90": 21.311475,
+      "n_users": 500
+    },
+    "kbd_shift_right_ratio": {
+      "population_median": 0.583333,
+      "population_mad": 0.416667,
+      "population_scale": 0.61775,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 1.0,
+      "p90": 1.0,
+      "n_users": 500
+    },
+    "kbd_speed_cv": {
+      "population_median": 0.296076,
+      "population_mad": 0.06922,
+      "population_scale": 0.102625,
+      "p10": 0.162303,
+      "p25": 0.230166,
+      "p75": 0.37326,
+      "p90": 0.446971,
+      "n_users": 500
+    },
+    "kbd_speed_kps": {
+      "population_median": 3.328509,
+      "population_mad": 0.726032,
+      "population_scale": 1.076416,
+      "p10": 2.361553,
+      "p25": 2.664995,
+      "p75": 4.151615,
+      "p90": 5.091383,
+      "n_users": 500
+    }
+  }
+}

@@ -25,6 +25,13 @@ import numpy as np
 from app.behavioral import stats
 from app.behavioral.features.registry import SPECS, is_enabled
 from app.behavioral.fingerprint.population import ABSOLUTE_FLOOR, PopulationPrior
+from enum import StrEnum
+
+class Maturity(StrEnum):
+    COLD_START = "COLD_START"
+    WARMING = "WARMING"
+    ESTABLISHED = "ESTABLISHED"
+    MATURE = "MATURE"
 
 # A feature must appear in at least this fraction of enrollment sessions, and
 # in at least this many, before it earns a place in the profile. Characterising
@@ -86,6 +93,7 @@ class BehaviorProfile:
     threshold: float = 0.0
     threshold_source: str = "uncalibrated"
     calibration: dict[str, object] = field(default_factory=dict)
+    maturity: Maturity = Maturity.MATURE
     # Bumped on every adaptive update; 1 means "as enrolled, never adapted".
     version: int = 1
     update_count: int = 0
@@ -187,3 +195,114 @@ def _discriminability_weight(
 
     variance = population_scale ** 2
     return float(variance / (variance + scale ** 2)) if variance > 0 else 1.0
+
+def fit_early_profile(
+    sessions: list[dict[str, float]],
+    prior: PopulationPrior,
+) -> dict[str, FeatureStat]:
+    """Fit from two observations, where a dispersion cannot yet be estimated.
+
+    `fit_profile` needs MIN_FEATURE_SESSIONS (3) before it will characterise a
+    feature at all, and below that it returns an empty profile that blocks
+    every attempt as INSUFFICIENT_SIGNAL. So two captures need their own path.
+
+    Two observations give a usable *centre* — the midpoint of two draws is a
+    considerably better estimate of a person than a single draw — but they give
+    almost nothing about spread. A MAD computed from two points is half their
+    absolute difference, which for two nearby draws collapses toward zero and
+    would make ordinary variation score many sigma out. That is the failure
+    mode the noise floors were added to prevent, and it is worse here because
+    there is no third point to contradict it.
+
+    So the centre is personal and the scale stays population-derived, exactly
+    as in the single-sample path. The observed spread is recorded in `mad` for
+    inspection, and deliberately does NOT tighten the scale. Adaptation widens
+    personalisation from here as genuine logins arrive.
+    """
+    if not sessions:
+        return {}
+    if len(sessions) == 1:
+        return fit_cold_start_profile(sessions[0], prior)
+
+    observed: dict[str, list[float]] = {}
+    for session in sessions:
+        for name, value in session.items():
+            if is_enabled(name) and math.isfinite(value):
+                observed.setdefault(name, []).append(value)
+
+    total = len(sessions)
+    stats_out: dict[str, FeatureStat] = {}
+
+    for name, raw in observed.items():
+        # A feature seen in only one of the two captures is kept: with two
+        # observations, requiring both would discard pointer features from any
+        # user who moved the mouse once. Coverage records how thin it is, and
+        # the scoring path already weights by coverage.
+        values = np.asarray(raw, dtype=float)
+        centre = stats.median(values)
+        raw_mad = stats.mad(values)
+
+        population_scale = prior.scale_for(name, centre)
+        scale = max(
+            population_scale,
+            RELATIVE_FLOOR_BETA * abs(centre),
+            SPECS[name].noise_floor,
+            ABSOLUTE_FLOOR,
+        )
+
+        stats_out[name] = FeatureStat(
+            name=name,
+            modality=SPECS[name].modality.value,
+            median=centre,
+            median_long=centre,
+            median_recent=centre,
+            median_enrolled=centre,
+            # Recorded, not used as the scale. See the docstring.
+            mad=raw_mad,
+            scale=scale,
+            # Uniform, as in the cold-start path: with two observations we
+            # cannot tell which features discriminate for this person, and
+            # inventing a ranking from two points would be worse than none.
+            weight=1.0,
+            coverage=len(raw) / total,
+        )
+
+    return stats_out
+
+
+def fit_cold_start_profile(
+    session: dict[str, float],
+    prior: PopulationPrior,
+) -> dict[str, FeatureStat]:
+    """Compute a conservative single-sample profile.
+    
+    With only one session, variance cannot be estimated empirically. The scale
+    is entirely derived from the population prior.
+    """
+    stats_out: dict[str, FeatureStat] = {}
+    
+    for name, value in session.items():
+        if is_enabled(name) and math.isfinite(value):
+            # Only generate features if the prior can provide a scale for them.
+            # E.g. pointer features might not have Aalto prior data, they fall back 
+            # to RELATIVE_SPREAD.
+            centre = value
+            
+            # The scale comes purely from the population prior.
+            population_scale = prior.scale_for(name, centre)
+            scale = max(population_scale, ABSOLUTE_FLOOR)
+            
+            stats_out[name] = FeatureStat(
+                name=name,
+                modality=SPECS[name].modality.value,
+                median=centre,
+                median_long=centre,
+                median_recent=centre,
+                median_enrolled=centre,
+                mad=0.0, # Cannot compute MAD from 1 sample
+                scale=scale,
+                weight=1.0, # Uniform weight since we don't know discriminability
+                coverage=1.0,
+            )
+            
+    return stats_out

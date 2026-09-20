@@ -14,7 +14,7 @@ attacker there holds a *correct* password.
 from __future__ import annotations
 
 from argon2 import PasswordHasher
-from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHash
 
 # Parameters sized for an interactive login on commodity hardware: ~64 MiB and
 # a few tens of milliseconds. High enough to be expensive in bulk, low enough
@@ -43,7 +43,7 @@ def verify_password(password: str, encoded_hash: str) -> bool:
     try:
         _hasher.verify(encoded_hash, password)
         return True
-    except (VerifyMismatchError, VerificationError, InvalidHashError):
+    except (VerifyMismatchError, VerificationError, InvalidHash):
         return False
 
 
@@ -55,7 +55,7 @@ def waste_time_like_a_real_verify() -> None:
     """
     try:
         _hasher.verify(_DUMMY_HASH, "not-the-password")
-    except (VerifyMismatchError, VerificationError, InvalidHashError):
+    except (VerifyMismatchError, VerificationError, InvalidHash):
         pass
 
 
@@ -63,5 +63,5 @@ def needs_rehash(encoded_hash: str) -> bool:
     """True when a stored hash predates the current cost parameters."""
     try:
         return _hasher.check_needs_rehash(encoded_hash)
-    except InvalidHashError:
+    except InvalidHash:
         return True

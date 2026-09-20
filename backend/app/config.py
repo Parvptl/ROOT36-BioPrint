@@ -110,6 +110,20 @@ class Settings:
     statistical_weight: float = 1.0
     ml_weight: float = 0.0
 
+    # --- evaluation capture ------------------------------------------------
+    # OFF by default and must stay that way. When on, the derived feature
+    # vector produced during enrollment and login is copied to a SEPARATE
+    # evaluation database so the same real-human capture can later be scored
+    # under more than one population prior.
+    #
+    # This does not weaken the product's privacy model, and it is not a
+    # raw-event retention switch — no such switch exists. What is copied is the
+    # 27 derived numbers that already reach the profile, never the events they
+    # came from, never the password, never the username. See
+    # app/evaluation_capture.py for exactly what is written.
+    evaluation_mode: bool = False
+    eval_db_path: Path = BACKEND_ROOT / "data" / "evaluation" / "eval_sessions.db"
+
 
 def load_settings() -> Settings:
     configured_secret = os.getenv("BIOPRINT_SECRET_KEY", "").strip()
@@ -141,6 +155,10 @@ def load_settings() -> Settings:
         ml_enabled=_env_bool("BIOPRINT_ML_ENABLED", True),
         statistical_weight=_env_float("BIOPRINT_STATISTICAL_WEIGHT", 1.0),
         ml_weight=_env_float("BIOPRINT_ML_WEIGHT", 0.0),
+        evaluation_mode=_env_bool("BIOPRINT_EVALUATION_MODE", False),
+        eval_db_path=_resolve_db_path(
+            os.getenv("BIOPRINT_EVAL_DB_PATH", "data/evaluation/eval_sessions.db")
+        ),
     )
 
 

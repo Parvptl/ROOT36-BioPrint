@@ -35,9 +35,30 @@ MALLORY = TypingStyle(
 )
 
 
+def _seeded_phrase(seed: int) -> str:
+    """A challenge phrase drawn reproducibly, from the production word list.
+
+    `generate_phrase` draws from `secrets` so an observer cannot predict the
+    next challenge. That is right in production and wrong in a test: an
+    unseeded phrase makes every run of these adaptation tests score different
+    text, and the drift test failed roughly half the time for that reason
+    alone. The phrase varies with the seed, so the tests still exercise varied
+    text — they just exercise the SAME varied text on every run.
+    """
+    import random
+
+    from app.auth.challenge import PHRASE_WORD_COUNT, _WORDS
+
+    rng = random.Random(seed)
+    words = [rng.choice(_WORDS) for _ in range(PHRASE_WORD_COUNT)]
+    for position in rng.sample(range(PHRASE_WORD_COUNT), 2):
+        words[position] = words[position].capitalize()
+    return " ".join(words)
+
+
 def features_of(style: TypingStyle, seed: int) -> dict[str, float]:
     _, extracted = extract_from_session(
-        human_session(generate_phrase(), style=style, seed=seed)
+        human_session(_seeded_phrase(seed), style=style, seed=seed)
     )
     return extracted.as_dict()
 

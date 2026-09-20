@@ -17,9 +17,6 @@ from app.behavioral.events import SessionView, build_session_view
 from app.behavioral.features.extractor import ExtractedFeatures, extract_features
 from app.behavioral.fingerprint.profile import BehaviorProfile
 from app.behavioral.fingerprint.scoring import IdentityResult, score_identity
-from app.behavioral.ml.anomaly_model import AnomalyScore, BehavioralAnomalyModel
-from app.behavioral.ml.hybrid import HybridIdentity, combine
-from app.behavioral.ml.windows import window_feature_dicts
 from app.behavioral.scoring.integrity import IntegrityResult, check_integrity
 from app.models.events import BehaviorSessionIn
 from app.models.schemas import LatencyBreakdown
@@ -35,18 +32,12 @@ class PipelineResult:
     automation: AutomationResult
     identity: IdentityResult
     latency: LatencyBreakdown
-    # Present whenever a model was supplied; None when the account has none.
-    anomaly: AnomalyScore | None = None
-    # The blended identity the risk engine acts on. Falls back to the
-    # statistical score alone when the ML layer does not apply.
-    hybrid: HybridIdentity | None = None
 
 
 def run_pipeline(
     session: BehaviorSessionIn,
     challenge: Challenge,
     profile: BehaviorProfile | None,
-    model: BehavioralAnomalyModel | None = None,
 ) -> PipelineResult:
     """Reshape, validate, extract and score one capture.
 
@@ -72,18 +63,14 @@ def run_pipeline(
     automation = detect_automation(view, session)
     after_automation = time.perf_counter()
 
-    # Inference only. The model is fitted at enrollment and never updated from
-    # a login attempt, so nothing an attacker submits can move the baseline.
-    anomaly: AnomalyScore | None = None
-    if model is not None:
-        try:
-            anomaly = model.anomaly_for(window_feature_dicts(session))
-        except Exception:  # noqa: BLE001 - a model fault must not deny service
-            log.warning("anomaly scoring failed; using statistics alone", exc_info=True)
-            anomaly = None
-    after_ml = time.perf_counter()
-
-    hybrid = combine(identity.score, anomaly)
+    # The Isolation Forest anomaly layer used to run here. It is RETIRED from
+    # the production path — see app/behavioral/ml/__init__.py. It was measured
+    # to be unable to change any verdict (evaluation/ml_independence.py: 60
+    # scenarios, 0 differences with it enabled and bypassed) while costing
+    # ~30.7 ms p50 of every login, and it answered the wrong question:
+    # "is this behaviour unusual for people in general" rather than "is this
+    # the enrolled user". The personalised profile answers the second, and the
+    # automation detector already owns "is this a human at all".
 
     return PipelineResult(
         view=view,
@@ -91,14 +78,11 @@ def run_pipeline(
         integrity=integrity,
         automation=automation,
         identity=identity,
-        anomaly=anomaly,
-        hybrid=hybrid,
         latency=LatencyBreakdown(
-            total_ms=(after_ml - started) * 1000.0,
+            total_ms=(after_automation - started) * 1000.0,
             validation_ms=(after_validation - started) * 1000.0,
             extraction_ms=(after_extraction - after_validation) * 1000.0,
             identity_ms=(after_identity - after_extraction) * 1000.0,
             automation_ms=(after_automation - after_identity) * 1000.0,
-            ml_inference_ms=(after_ml - after_automation) * 1000.0,
         ),
     )

@@ -36,7 +36,36 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # Twelve buys almost nothing for another ninety seconds of the user's time.
 #
 # Those figures are synthetic mechanism validation, not real accuracy.
-ENROLLMENT_ROUNDS = 8
+#
+# Kept as the RESEARCH baseline and still reachable, because it remains the
+# strongest profile the system can build and every comparison is anchored to it.
+RESEARCH_ENROLLMENT_ROUNDS = 8
+
+# What the product actually asks a new user for.
+#
+# Eight dedicated rounds is about two minutes of typing before anyone has
+# logged in once, and that is real abandonment. The question is what the
+# shortest defensible enrollment is, and it was measured rather than guessed
+# (evaluation/enrollment_size_ablation.py, 120 generated typists, 1200 genuine
+# and 1200 impostor attempts per condition, the real Aalto prior held fixed,
+# thresholds calibrated on 60 users and reported on 60 disjoint held-out ones):
+#
+#     at a matched 10% false-acceptance budget
+#     1 capture   false rejection  9.7%   false acceptance  9.8%
+#     2 captures                   6.5%                     8.8%
+#     8 captures                   0.0%                    10.0%
+#
+# Two captures beat one on BOTH axes, at every budget swept (2, 5, 10, 15%).
+# That is dominance rather than a trade-off, and it is why the product asks for
+# two. Threshold-free: ROC-AUC 0.9758 -> 0.9845, equal-error 8.50% -> 6.17%.
+#
+# Eight remains far stronger than either, which is the honest shape of this:
+# a two-capture profile is a usable starting point, not a mature one. It is
+# why the cold-start threshold is tighter than the mature one and why
+# adaptation graduates the profile as genuine logins arrive.
+#
+# Generated typists. Not a claim about real-human accuracy.
+ENROLLMENT_ROUNDS = 2
 
 
 def client_key(request: Request, suffix: str = "") -> str:
@@ -131,7 +160,9 @@ def profile_status(
         sessions_required=MIN_ENROLLMENT_SESSIONS,
         feature_count=len(profile.features),
         population_size=profile.population_size,
-        threshold=round(profile.threshold, 4),
+        # No exact threshold here. See ProfileStatusOut.
         threshold_source=profile.threshold_source,
         calibration_note=str(profile.calibration.get("note", "")),
+        maturity=profile.maturity.value,
+        profile_version=profile.version,
     )

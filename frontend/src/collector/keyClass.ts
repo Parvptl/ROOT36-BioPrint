@@ -83,8 +83,21 @@ export function redactForContext(
   code: string,
   keyClass: KeyClass,
 ): { code: string | null; key_class: KeyClass } {
+  // Not every key event carries a physical code. Dead keys, some IME
+  // compositions, certain international layouts and synthetic events all
+  // produce an empty string. Sending "" fails the server's alphanumeric
+  // validator and 422s the WHOLE login — one unmappable keystroke throws away
+  // an otherwise good capture.
+  //
+  // `null` is the honest value: we genuinely do not know which physical key
+  // this was. The server already accepts it (the password path sends null for
+  // every key), and the only features that read `code` are the per-hand dwell
+  // medians, which skip a press they cannot attribute to a hand rather than
+  // guessing. Timing and key_class are unaffected, so the capture stays usable.
+  const physical = code ? code : null;
+
   if (ctx !== 'password') {
-    return { code, key_class: keyClass };
+    return { code: physical, key_class: keyClass };
   }
 
   const isShift = keyClass === 'shift_left' || keyClass === 'shift_right';

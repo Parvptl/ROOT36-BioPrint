@@ -136,9 +136,41 @@ rather than forcing it.
 
 ---
 
+## REAL AALTO DATASET
+
+**Source:** Aalto University Keystroke Dataset (136M Keystrokes).
+**Status:** Available locally at `backend/evaluation/ml/data/aalto/extracted/Keystrokes/files/`
+
+This dataset contains raw, chronological keystroke events with absolute millisecond timestamps (`PRESS_TIME`, `RELEASE_TIME`) and keycodes over free-text transcription tasks. It provides exactly what BioPrint needs to compute 15 of its 16 keyboard features.
+
+### Feature Compatibility and Adapter Status
+
+An adapter (`backend/evaluation/ml/aalto_adapter.py`) maps the Aalto data into the exact `KeyPress` objects expected by the BioPrint production browser extractor, guaranteeing mathematical equivalence.
+
+**Compatible Features (15/16):**
+All timing-based and rhythm features (e.g., `kbd_dwell_median`, `kbd_flight_negative_frac`, `kbd_logiki_median`) map perfectly because Aalto provides high-precision press and release times. `KEYCODE` values are deterministically mapped to left/right hands.
+
+**Incompatible Feature (1/16):**
+- `kbd_shift_right_ratio`: **UNOBSERVED**. Aalto logs generic `KEYCODE = 16` for all Shift keys, lacking modern `event.code` or `event.location` data to distinguish Left vs Right Shift. This feature is explicitly marked as `NaN` (unobserved) in the Aalto adapter rather than being fabricated. The production schema remains unchanged.
+
+### Demographics and Identity
+- **Participant/Session:** `PARTICIPANT_ID` maps to the user identity. `TEST_SECTION_ID` corresponds to a single sentence typing session. 
+- **Usage:** This dataset is exclusively for calculating population-level variability priors (median/MAD statistics). It is **not** used to learn user identities or replace the 1-sample enrollment lifecycle.
+
+*Note: The real Aalto prior will replace the synthetic bootstrap prior once population statistics are computed in Phase C.*
+
+---
+
 ## Outcome
 
-**No public dataset is used.** All three candidates were rejected on
+**Public Dataset Validation:** We are actively using the **Real Aalto Dataset** for population prior generation.
+
+| | why rejected / accepted |
+|---|---|
+| CMU | Rejected: fixed-text; one password string; validates a different architecture |
+| Balabit | Rejected: RDP-captured mouse, 10 users, no explicit licence |
+| KeyRecs | Rejected: digraph latencies only; no per-key hold times → 4 of 16 keyboard features uncomputable |
+| Aalto (136M) | **Accepted**: Raw keydown/keyup events over free text. 15 of 16 features perfectly compatible. |
 compatibility, each for a different reason:
 
 | | why rejected |

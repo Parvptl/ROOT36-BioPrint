@@ -12,6 +12,8 @@ from __future__ import annotations
 import pytest
 
 from app.api.ratelimit import limiter
+from app.api.routes_auth import ENROLLMENT_ROUNDS
+from app.behavioral.fingerprint.profile import MIN_FEATURE_SESSIONS
 from app.auth.challenge import normalise_phrase
 from tests.factories import (
     TypingStyle,
@@ -190,15 +192,27 @@ def test_enrollment_builds_a_calibrated_profile(client, age_challenge):
 
     status = client.get(f"/auth/profile/status?username={USERNAME}").json()
     assert status["enrolled"] is True
-    assert status["threshold"] is not None
+    # The exact threshold must NOT be here. This endpoint is unauthenticated,
+    # and DecisionOut withholds the number precisely so an attacker cannot read
+    # the bar they need to clear; serving it from an open GET would have given
+    # it back. It previously did.
+    assert "threshold" not in status
+    assert status["maturity"] in {"COLD_START", "WARMING", "ESTABLISHED", "MATURE"}
     # The "+ml" suffix marks a threshold re-derived from the blended
     # statistical+ML score rather than the statistical score alone. Blending
     # without recalibrating would silently move the operating point.
-    assert status["threshold_source"].removesuffix("+ml") in {
-        "calibrated",
-        "genuine_only",
-        "fallback_prior",
-    }
+    #
+    # Which sources are legitimate depends on the enrollment size, and saying
+    # so is the point of this assertion. The product enrolls in two captures,
+    # which give a personal centre but no dispersion to calibrate against, so
+    # the threshold is the static cold-start cut. Only the research baseline
+    # has enough rounds for leave-one-out calibration.
+    expected = (
+        {"calibrated", "genuine_only", "fallback_prior"}
+        if ENROLLMENT_ROUNDS >= MIN_FEATURE_SESSIONS
+        else {"cold_start_prior"}
+    )
+    assert status["threshold_source"].removesuffix("+ml") in expected
     assert status["calibration_note"]
 
 
