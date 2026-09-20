@@ -10,7 +10,7 @@ export default function App() {
   const isLogin = location.pathname === '/login' || location.pathname === '/';
   return <div className="app-shell video-shell">
     <AnimatedSecurityBackground login={isLogin} />
-    <aside className="sidebar">
+    {!isLogin && <aside className="sidebar">
       <NavLink className="brand" to="/login" aria-label="BioPrint home"><div className="brand-mark">⌁</div><div><div className="brand-name">BioPrint</div><div className="brand-tag">Identity intelligence</div></div></NavLink>
       <div className="nav-label">Workspace</div>
       <nav className="navlinks" aria-label="Primary navigation">
@@ -19,8 +19,8 @@ export default function App() {
         <NavLink to="/security"><Icon>◫</Icon>Security console</NavLink>
       </nav>
       <div className="sidebar-foot"><span className="status-dot" />Behavioural engine ready</div>
-    </aside>
-    <main className="main-area"><header className="topbar"><div className="crumb"><span>BioPrint</span><b>/</b><span>Behavioural authentication</span></div><div className="system-status"><span className="status-dot" />System protected</div></header>
+    </aside>}
+    <main className={isLogin ? 'main-area main-area--login' : 'main-area'}>{!isLogin && <header className="topbar"><div className="crumb"><span>BioPrint</span><b>/</b><span>Behavioural authentication</span></div><div className="system-status"><span className="status-dot" />System protected</div></header>}
       <div className="page-content"><Routes>
         <Route path="/" element={<Navigate to="/login" replace />} /><Route path="/login" element={<LoginPage />} /><Route path="/enroll" element={<EnrollPage />} /><Route path="/security" element={<SecurityPage />} /><Route path="*" element={<Navigate to="/login" replace />} />
       </Routes></div>

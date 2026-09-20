@@ -207,7 +207,7 @@ export function SecurityVerdict({ decision }: { decision: Decision }) {
   return (
     <div className={`verdict ${allowed ? 'allow' : 'block'}`} style={{ marginBottom: 24 }}>
       <div className="verdict-title">
-        {allowed ? 'ACCESS GRANTED' : 'ACCESS DENIED'}
+        {allowed ? 'ACCESS GRANTED' : 'ACCESS BLOCKED'}
       </div>
       <div className="verdict-msg">{subtitle(decision)}</div>
 
