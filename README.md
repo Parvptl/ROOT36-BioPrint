@@ -586,30 +586,6 @@ To collect real data:
 3. **Impostor** — a *different person* logs in with your correct password, ~10 times.
 4. **Bot / replay** — the harness runs these automatically.
 
-Three properties of the harness worth knowing before reading its numbers:
-
-**Password failures are separated from behavioural decisions.** A wrong password
-is rejected by the credential gate before any behavioural analysis runs, so the
-attempt carries no identity score and no threshold comparison. Those attempts
-are reported as `PASSWORD_FAILURE` with their count and their attempt ids, and
-excluded from FAR and FRR. They are never silently dropped. In the first
-real-human run this mattered: three of 43 attempts were mistyped passwords, and
-counting them put genuine acceptance at 85.7% when the behavioural figure was
-92.3%.
-
-**It refuses to measure a stale server.** A long-lived uvicorn process serving
-code older than the source tree produced an entire evaluation run against a
-build with neither the ML nor the adaptive layer in it, and nothing in the
-results showed it. `/health` now reports `started_at`, and the harness exits if
-any file under `backend/app` is newer.
-
-**It never overwrites a previous run.** Output goes to a timestamped file plus
-`latest.json`; earlier runs stay in `evaluation/out/` and `evaluation/out/baseline/`.
-
-The forensic analysis of the first run is in
-[docs/evaluation-run1-forensics.md](docs/evaluation-run1-forensics.md), and
-`evaluation/forensics.py` dumps any run's audit trail per attempt.
-
 ## 15. Testing
 
 ```bash

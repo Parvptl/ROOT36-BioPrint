@@ -132,11 +132,6 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
     automation_score  REAL,
     integrity_score   REAL,
     coverage          REAL,
-    -- The bar this attempt was actually judged against: the profile threshold
-    -- after automation tightening. Stored rather than recomputed at read time,
-    -- because a score without the threshold it was compared to cannot be
-    -- interpreted, and the tightening factor is not visible in this table.
-    threshold         REAL,
     latency_ms        REAL,
     created_at        REAL    NOT NULL
 );

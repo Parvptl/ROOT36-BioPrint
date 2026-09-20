@@ -94,35 +94,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="auth-layout">
-      <section className="panel auth-intro">
-        <div className="eyebrow"><span className="capture-dot" />Protection ready</div>
-        <h1 className="hero-title">Authenticate by how you behave.</h1>
-        <p className="panel-sub">
-          BioPrint verifies the rhythm, movement and interaction patterns that make your identity distinct.
-          Your password remains private; only behavioral summaries are retained.
-        </p>
-        <div className="capture-grid" aria-label="Behavioral signals">
-          <div className={`capture-card ${username || password ? 'active' : ''}`}>
-            <div className="capture-kicker">Keystroke rhythm</div>
-            <div className="capture-state"><span className="capture-dot" />{username || password ? 'Capturing' : 'Ready'}</div>
-          </div>
-          <div className={`capture-card ${username ? 'active' : ''}`}>
-            <div className="capture-kicker">Pointer dynamics</div>
-            <div className="capture-state"><span className="capture-dot" />{username ? 'Observed' : 'Idle'}</div>
-          </div>
-          <div className={`capture-card ${challenge ? 'active' : ''}`}>
-            <div className="capture-kicker">Challenge integrity</div>
-            <div className="capture-state"><span className="capture-dot" />{challenge ? 'Issued' : 'Waiting'}</div>
-          </div>
-        </div>
-        <div className="trust-note"><strong>Behavioral protection</strong><span>Credentials plus a live human signature</span></div>
-      </section>
-
-      <section className="panel auth-form-panel">
-        <div className="eyebrow">Secure access <span className="status-pill">Encrypted</span></div>
-        <h2 className="panel-title">Sign in</h2>
-        <p className="panel-sub">A correct password alone is not enough to sign in.</p>
+    <div className="panel">
+      <h1 className="panel-title">Sign in</h1>
+      <p className="panel-sub">
+        Protected by behavioural authentication. A correct password alone is not
+        enough to sign in.
+      </p>
 
       {error ? <div className="notice error">{error}</div> : null}
 
@@ -192,10 +169,9 @@ export default function LoginPage() {
         </form>
       )}
 
-        <p className="hint" style={{ marginTop: 18 }}>
-          No account yet? <Link to="/enroll" className="muted-link">Enroll a behavioural profile</Link>.
-        </p>
-      </section>
+      <p className="hint" style={{ marginTop: 18 }}>
+        No account yet? <Link to="/enroll" className="muted-link">Enroll a behavioural profile</Link>.
+      </p>
     </div>
   );
 }

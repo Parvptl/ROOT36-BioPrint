@@ -8,7 +8,6 @@ from the backend/ directory with the virtualenv active.
 from __future__ import annotations
 
 import logging
-import time
 from contextlib import asynccontextmanager
 
 from pathlib import Path
@@ -28,16 +27,6 @@ from app.db.database import init_db
 # serves dist/ separately on some other port otherwise gets a login page that
 # silently cannot reach the backend.
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-
-APP_ROOT = Path(__file__).resolve().parent
-
-# When this process loaded its code. Reported by /health so the evaluation
-# harness can refuse to measure a server that is older than the source on
-# disk. A long-lived uvicorn process silently serving pre-change code produced
-# an entire evaluation run against a build with neither the ML nor the
-# adaptive layer in it; nothing in the results showed that, because the
-# database schema was current while the running code was not.
-PROCESS_STARTED_AT = time.time()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -100,11 +89,6 @@ def health() -> dict[str, object]:
         "raw_event_retention": False,
         "demo_reset_enabled": bool(settings.demo_reset_key),
         "frontend_bundled": FRONTEND_DIST.is_dir(),
-        # Local diagnostics, not secrets: when this process started and where
-        # its code was loaded from, so a caller on the same machine can tell a
-        # stale server from a current one.
-        "started_at": PROCESS_STARTED_AT,
-        "app_root": str(APP_ROOT),
     }
 
 

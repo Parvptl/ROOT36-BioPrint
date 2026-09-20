@@ -330,25 +330,18 @@ def record_attempt(
     latency_ms: float,
     statistical_identity_score: float | None = None,
     ml_anomaly_score: float | None = None,
-    threshold: float | None = None,
 ) -> int:
     """Append to the decision audit trail.
 
     Scores and reason codes only. No raw events, no password material, no
     typed text.
-
-    `threshold` is the effective bar this attempt was judged against, which is
-    NULL when the attempt was rejected before identity scoring ran — a wrong
-    password or a failed integrity check never reaches a threshold comparison,
-    and recording one there would imply a behavioural judgement that was never
-    made.
     """
     cursor = conn.execute(
         "INSERT INTO auth_attempts "
         "(user_id, username_attempt, decision, reason, reasons_json, identity_score, "
         " statistical_identity_score, ml_anomaly_score, "
-        " automation_score, integrity_score, coverage, threshold, latency_ms, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " automation_score, integrity_score, coverage, latency_ms, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             user_id,
             username_attempt,
@@ -361,7 +354,6 @@ def record_attempt(
             automation_score,
             integrity_score,
             coverage,
-            threshold,
             latency_ms,
             time.time(),
         ),
