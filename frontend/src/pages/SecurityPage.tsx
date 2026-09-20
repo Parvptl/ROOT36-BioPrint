@@ -183,7 +183,7 @@ export default function SecurityPage() {
               <span>verdict</span>
               <span>reason</span>
               <span>identity</span>
-              <span>ML anom</span>
+              <span>statistical</span>
               <span>automation</span>
               <span>latency</span>
             </div>
@@ -194,6 +194,7 @@ export default function SecurityPage() {
                 <span className={a.decision === 'ALLOW' ? 'ok' : 'bad'}>{a.decision}</span>
                 <span className="dim">{a.reason}</span>
                 <span>{fmt(a.identity_score)}</span>
+                <span>{fmt(a.statistical_identity_score)}</span>
                 <span>{fmt(a.automation_score)}</span>
                 <span className="dim">{a.latency_ms ? `${a.latency_ms.toFixed(0)}ms` : '--'}</span>
               </button>
